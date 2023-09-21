@@ -37,6 +37,13 @@ const plugins = [
   `medusa-fulfillment-manual`,
   `medusa-payment-manual`,
   {
+    resolve: `medusa-payment-paystack`,
+    /** @type {import("medusa-payment-paystack").PluginOptions} */
+    options: {
+      secret_key: process.env.PS_KEY,
+    },
+  },
+  {
     resolve: `@medusajs/file-local`,
     options: {
       upload_dir: "uploads",
