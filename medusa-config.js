@@ -37,8 +37,8 @@ const plugins = [
   `medusa-fulfillment-manual`,
   `medusa-payment-manual`,
   {
-    resolve: `medusa-payment-paystack`,
-    /** @type {import("medusa-payment-paystack").PluginOptions} */
+    resolve: `medusa-payment-paystack-modified`,
+    /** @type {import("medusa-payment-paystack-modified").PluginOptions} */
     options: {
       secret_key: process.env.PS_KEY,
     },
