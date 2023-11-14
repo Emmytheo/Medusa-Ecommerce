@@ -56,6 +56,11 @@ class ProductService extends MedusaProductService {
       ...(config.relations || []),
       'store'
     ]
+    config.select = [
+      ...(config.select || []),
+      'store_id'
+    ]
+    
 
     const product = await super.retrieve(productId, config);
 

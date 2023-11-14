@@ -17,5 +17,5 @@ export class Store extends MedusaStore {
 
   @OneToMany(() => Order, (order) => order.store)
   @JoinColumn({ name: 'id', referencedColumnName: 'store_id' })
-  orders: Order[];
+  orders?: Order[];
 }

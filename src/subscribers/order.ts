@@ -1,5 +1,14 @@
-import { EventBusService, OrderService, ProductService } from "@medusajs/medusa";
-import { LineItem, OrderStatus, FulfillmentStatus, PaymentStatus } from "@medusajs/medusa";
+import {
+  EventBusService,
+  OrderService,
+  ProductService,
+  LineItem,
+  OrderStatus,
+  FulfillmentStatus,
+  PaymentStatus,
+  Selector,
+  FindConfig,
+} from "@medusajs/medusa";
 import { LineItemRepository } from "@medusajs/medusa/dist/repositories/line-item";
 import { OrderRepository } from "../repositories/order";
 import { PaymentRepository } from "@medusajs/medusa/dist/repositories/payment";
@@ -7,21 +16,20 @@ import { ShippingMethodRepository } from "@medusajs/medusa/dist/repositories/shi
 import { EntityManager } from "typeorm";
 import { Product } from "../models/product";
 import { Order } from "../models/order";
-import { Selector, FindConfig } from "@medusajs/medusa/dist/types/common";
+
 
 type InjectedDependencies = {
-    manager: EntityManager,
-    eventBusService: EventBusService,
-    orderService: OrderService,
-    productService: ProductService,
-    orderRepository: typeof OrderRepository,
-    lineItemRepository: typeof LineItemRepository,
-    shippingMethodRepository: typeof ShippingMethodRepository
-}
-  
+  manager: EntityManager;
+  eventBusService: EventBusService;
+  orderService: OrderService;
+  productService: ProductService;
+  orderRepository: typeof OrderRepository;
+  lineItemRepository: typeof LineItemRepository;
+  shippingMethodRepository: typeof ShippingMethodRepository;
+};
 
 export default class OrderSubscriber {
-    protected readonly manager_: EntityManager;
+  protected readonly manager_: EntityManager;
   protected readonly eventBusService_: EventBusService;
   protected readonly orderService_: OrderService;
   protected readonly productService_: ProductService;
@@ -36,8 +44,16 @@ export default class OrderSubscriber {
     productService,
     orderRepository,
     lineItemRepository,
-    shippingMethodRepository
-  }: InjectedDependencies) {
+    shippingMethodRepository,
+  }: {
+    manager: EntityManager;
+    eventBusService: EventBusService;
+    orderService: OrderService;
+    productService: ProductService;
+    orderRepository: typeof OrderRepository;
+    lineItemRepository: typeof LineItemRepository;
+    shippingMethodRepository: typeof ShippingMethodRepository;
+  }) {
     this.manager_ = manager;
     this.eventBusService_ = eventBusService;
     this.orderService_ = orderService;
@@ -45,9 +61,6 @@ export default class OrderSubscriber {
     this.orderRepository_ = orderRepository;
     this.lineItemRepository_ = lineItemRepository;
     this.shippingMethodRepository_ = shippingMethodRepository;
-
-  
-
 
     eventBusService.subscribe(
       OrderService.Events.PLACED,
@@ -67,7 +80,8 @@ export default class OrderSubscriber {
     );
   }
 
-  private async handleOrderPlaced({ id }: { id: string }): Promise<void> {
+  async handleOrderPlaced({ id }: { id: string }): Promise<void> {
+    console.log("Here", id);
     // Create child orders
     // Retrieve order
     const order: Order = await this.orderService_.retrieve(id, {
@@ -86,9 +100,41 @@ export default class OrderSubscriber {
     for (const item of order.items) {
       const product: Product = await this.productService_.retrieve(
         item.variant.product_id,
-        { select: ["store_id"] }
+        {
+          select: [
+            'collection_id', 'created_at',
+            'deleted_at',    'description',
+            'discountable',  'external_id',
+            'handle',        'height',
+            'hs_code',       'id',
+            'is_giftcard',   'length',
+            'material',      'metadata',
+            'mid_code',      'origin_country',
+            'status',        'store_id',
+            'subtitle',      'thumbnail',
+            'title',         'type_id',
+            'updated_at',    'weight',
+            'width',
+            "store_id"
+          ],
+          relations: [
+            'collection',
+            'images',
+            'options',
+            'profiles',
+            'sales_channels',
+            'store',
+            'tags',
+            'type',
+            'variants',
+            'variants.options',
+            'variants.prices'
+          ]
+        }
       );
-      const store_id = product.store_id;
+      
+      // Extract the relevant properties
+      const { store_id } = product;
       if (!store_id) {
         continue;
       }
@@ -98,6 +144,7 @@ export default class OrderSubscriber {
 
       groupedItems[store_id].push(item);
     }
+
 
     const orderRepo = this.orderRepository_;
     const lineItemRepo = this.lineItemRepository_;
@@ -114,7 +161,9 @@ export default class OrderSubscriber {
         id: null,
         shipping_methods: [],
       }) as Order;
+
       const orderResult = await orderRepo.save(childOrder);
+      console.log(orderResult);
 
       // Create shipping methods
       for (const shippingMethod of order.shipping_methods) {
