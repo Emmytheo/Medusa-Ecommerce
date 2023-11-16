@@ -26,11 +26,11 @@ class OrderService extends MedusaOrderService {
 
   async retrieve(orderId: string, config?: FindConfig<Order>): Promise<Order> {
     
-    config.relations = [
-      ...(config.relations || []),
-      'store'
-    ]
     if(this.loggedInUser_){
+      config.relations = [
+        ...(config.relations || []),
+        'store'
+      ]
       config.select = [
         ...(config.select || []),
         'store_id'
