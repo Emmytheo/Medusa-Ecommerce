@@ -62,22 +62,22 @@ export default class OrderSubscriber {
     this.lineItemRepository_ = lineItemRepository;
     this.shippingMethodRepository_ = shippingMethodRepository;
 
-    eventBusService.subscribe(
-      OrderService.Events.PLACED,
-      this.handleOrderPlaced.bind(this)
-    );
-    eventBusService.subscribe(
-      OrderService.Events.CANCELED,
-      this.checkStatus.bind(this)
-    );
-    eventBusService.subscribe(
-      OrderService.Events.UPDATED,
-      this.checkStatus.bind(this)
-    );
-    eventBusService.subscribe(
-      OrderService.Events.COMPLETED,
-      this.checkStatus.bind(this)
-    );
+    // eventBusService.subscribe(
+    //   OrderService.Events.PLACED,
+    //   this.handleOrderPlaced.bind(this)
+    // );
+    // eventBusService.subscribe(
+    //   OrderService.Events.CANCELED,
+    //   this.checkStatus.bind(this)
+    // );
+    // eventBusService.subscribe(
+    //   OrderService.Events.UPDATED,
+    //   this.checkStatus.bind(this)
+    // );
+    // eventBusService.subscribe(
+    //   OrderService.Events.COMPLETED,
+    //   this.checkStatus.bind(this)
+    // );
   }
 
   async handleOrderPlaced({ id }: { id: string }): Promise<void> {
