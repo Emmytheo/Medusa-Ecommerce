@@ -9,11 +9,9 @@ import { DeepPartial } from "typeorm"
 
 export const UserRepository = dataSource
   .getRepository(User)
-  .extend({
-    ...Object.assign(
-      MedusaUserRepository, 
-      { target: User }
-    ),
-  })
+  .extend(Object.assign(
+    MedusaUserRepository, 
+    { target: User }
+  ),)
 
 export default UserRepository
