@@ -1,4 +1,5 @@
 const dotenv = require("dotenv");
+const path = require("path");
 
 let ENV_FILE_NAME = "";
 switch (process.env.NODE_ENV) {
@@ -64,21 +65,31 @@ const plugins = [
 ];
 
 const modules = {
+  // Register the Exchange Rate Service
+  // exchangeRateService: {
+  //   resolve: path.join(__dirname, "src", "services", "exchange-rate"),
+  //   options: {
+  //     api_key: process.env.OPEN_EXCHANGE_RATES_API_KEY,
+  //   },
+  // },
+  // exchangeRateRepository: {
+  //   resolve: path.join(__dirname, "src", "repositories", "exchange-rate"),
+  // },
+  // Uncomment and configure eventBus and cacheService if needed
   /*eventBus: {
     resolve: "@medusajs/event-bus-redis",
     options: {
-      redisUrl: REDIS_URL
-    }
+      redisUrl: REDIS_URL,
+    },
   },
   cacheService: {
     resolve: "@medusajs/cache-redis",
     options: {
-      redisUrl: REDIS_URL
-    }
+      redisUrl: REDIS_URL,
+    },
   },*/
 };
 
-/** @type {import('@medusajs/medusa').ConfigModule["projectConfig"]} */
 const projectConfig = {
   jwtSecret: process.env.JWT_SECRET,
   cookieSecret: process.env.COOKIE_SECRET,
@@ -86,10 +97,9 @@ const projectConfig = {
   database_url: DATABASE_URL,
   admin_cors: ADMIN_CORS,
   // Uncomment the following lines to enable REDIS
-  // redis_url: REDIS_URL
+  redis_url: REDIS_URL
 };
 
-/** @type {import('@medusajs/medusa').ConfigModule} */
 module.exports = {
   projectConfig,
   plugins,
