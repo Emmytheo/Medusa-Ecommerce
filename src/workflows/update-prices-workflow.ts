@@ -14,6 +14,10 @@ import {
   ProductVariant,
   MoneyAmount,
 } from "@medusajs/medusa/dist/models";
+import { ProductVariantPricesUpdateReq } from "@medusajs/medusa/dist/types/product-variant";
+// import { ProductVariantPrice } from "@medusajs/medusa";
+
+// ProductVariantPricesUpdateReq
 
 type WorkflowOutput = {
   message: string;
@@ -68,7 +72,7 @@ const updateProductVariantPrices = createStep(
       // Fetch all products with store relation
       const products: Product[] = await productService.list(
         {},
-        { relations: ["store"] }
+        { relations: ["store", "variants.prices"] }
       );
 
       for (const product of products) {
@@ -90,15 +94,9 @@ const updateProductVariantPrices = createStep(
           continue;
         }
 
-        // Fetch product variants for the product
-        const variants: ProductVariant[] = await productVariantService.list(
-          { product_id: product.id },
-          { relations: ["prices"] }
-        );
-
-        for (const variant of variants) {
+        for (const variant of product.variants) {
           const existingPrices: MoneyAmount[] = variant.prices || [];
-          const updatedPrices: (Partial<MoneyAmount> & { id?: string })[] = [];
+          const updatedPrices: ProductVariantPricesUpdateReq[] = [];
 
           // Find the price in the base currency
           const basePriceObj = existingPrices.find(
@@ -144,8 +142,8 @@ const updateProductVariantPrices = createStep(
             const priceUpdate = {
               currency_code: currency.toLowerCase(),
               amount: newPriceAmount,
-            //   updated_at: updatedAt,
-            } as Partial<MoneyAmount> & { id?: string };
+              //   updated_at: updatedAt,
+            } as ProductVariantPricesUpdateReq;
 
             if (existingPrice) {
               // Update existing price
@@ -164,9 +162,10 @@ const updateProductVariantPrices = createStep(
           });
 
           // Update the variant with the updated prices
-          await productVariantService.update(variant.id, {
-            // prices: updatedPrices,
-          });
+          await productVariantService.updateVariantPrices(
+            variant.id,
+            updatedPrices
+          );
         }
       }
 

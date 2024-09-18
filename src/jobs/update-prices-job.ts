@@ -23,7 +23,7 @@ export default async function handler({
 
 export const config: ScheduledJobConfig = {
   name: "update-prices-job",
-//   schedule: "0 0 * * 1", // Every Monday at 00:00
-  schedule: "* * * * *",
+  schedule: "0 0 * * 1", // Every Monday at 00:00
+  // schedule: "* * * * *",
   data: {},
 };
