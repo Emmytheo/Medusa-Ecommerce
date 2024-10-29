@@ -13,8 +13,9 @@ export class Wallet extends BaseEntity {
   @Column({ unique: true })
   user_id: string
 
-  @Column({ type: "decimal", default: 0, precision: 15, scale: 2 })
-  total_balance: number
+  
+  @Column({ type: "jsonb", default: {} })
+  total_balance: Record<string, number> 
 
   @OneToMany(() => WalletAccount, (walletAccount) => walletAccount.wallet)
   accounts: WalletAccount[]

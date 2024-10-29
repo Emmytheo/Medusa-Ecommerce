@@ -19,6 +19,10 @@ export const WalletRepository = dataSource.getRepository(Wallet).extend({
     const wallet = await this.findOne({ where: { id: userId } });
     return wallet ? wallet.balance : 0;
   },
+
+  async getWallet(userId: string): Promise<Wallet | null> {
+    return this.findOne({ where: { user_id: userId } });
+  }
 });
 
 export default WalletRepository;

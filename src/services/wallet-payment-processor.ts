@@ -1,12 +1,18 @@
-import { Service } from "typedi";
+import { Service, Container } from "typedi";
 import { WalletRepository } from "../repositories/wallet";
 import { WalletAccountTransaction } from "../models/wallet-account-transaction"; // Import transaction model
 import { TransactionBaseService } from "@medusajs/medusa";
+import { EntityManager } from "typeorm";
+import { InjectManager } from "typeorm-typedi-extensions";
 
 @Service()
 class WalletPaymentProcessor extends TransactionBaseService {
-  constructor(private walletRepository: typeof WalletRepository) {
-    super();
+  constructor(
+    private walletRepository: typeof WalletRepository,
+    @InjectManager() manager: EntityManager, // Ensure you're injecting the manager
+    container: Container
+  ) {
+    super(container); // Pass the container to the super constructor
   }
 
   async authorizePayment(userId: string, amount: number): Promise<boolean> {
@@ -36,7 +42,8 @@ class WalletPaymentProcessor extends TransactionBaseService {
     const transaction = await this.createTransaction(
       walletAccountId,
       amount,
-      type
+      type,
+      this.manager_
     );
 
     return transaction;
@@ -45,9 +52,12 @@ class WalletPaymentProcessor extends TransactionBaseService {
   private async createTransaction(
     walletAccountId: string,
     amount: number,
-    type: "debit" | "credit"
+    type: "debit" | "credit",
+    manager: EntityManager // Use EntityManager for transactional operations
   ): Promise<WalletAccountTransaction> {
-    const transaction = WalletAccountTransaction.create({
+    const transactionRepo = manager.getRepository(WalletAccountTransaction);
+
+    const transaction = transactionRepo.create({
       wallet_account_id: walletAccountId,
       amount,
       type,
@@ -55,7 +65,7 @@ class WalletPaymentProcessor extends TransactionBaseService {
       metadata: {}, // Additional data can be added here
     });
 
-    return await transaction.save();
+    return await transactionRepo.save(transaction);
   }
 }
 
