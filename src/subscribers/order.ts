@@ -286,12 +286,6 @@ export default class OrderSubscriber {
     return await storeRepository.findOne({ where: { id: store_id } });
   }
 
-  async createWalletForUser(user: User, currencyCode: string): Promise<Wallet> {
-    const walletRepository = this.walletRepository_;
-    const wallet = await walletRepository.createWallet(user.id);
-    return await walletRepository.save(wallet);
-  }
-
   async createWalletAccount(
     user_id: string,
     currencyCode: string
