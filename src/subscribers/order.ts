@@ -8,6 +8,8 @@ import {
   PaymentStatus,
   Selector,
   FindConfig,
+  DraftOrderService,
+  CartService
 } from "@medusajs/medusa";
 import { LineItemRepository } from "@medusajs/medusa/dist/repositories/line-item";
 import { OrderRepository } from "../repositories/order";
@@ -16,6 +18,7 @@ import { ShippingMethodRepository } from "@medusajs/medusa/dist/repositories/shi
 import { EntityManager } from "typeorm";
 import { Product } from "../models/product";
 import { Order } from "../models/order";
+import DraftOrderRepository from "@medusajs/medusa/dist/repositories/draft-order";
 
 
 type InjectedDependencies = {
@@ -23,19 +26,26 @@ type InjectedDependencies = {
   eventBusService: EventBusService;
   orderService: OrderService;
   productService: ProductService;
+  draftOrderService: DraftOrderService;
+  cartService: CartService;
   orderRepository: typeof OrderRepository;
   lineItemRepository: typeof LineItemRepository;
   shippingMethodRepository: typeof ShippingMethodRepository;
+  draftOrderRepository: typeof DraftOrderRepository;
 };
 
 export default class OrderSubscriber {
   protected readonly manager_: EntityManager;
   protected readonly eventBusService_: EventBusService;
   protected readonly orderService_: OrderService;
+  protected readonly draftOrderService_: DraftOrderService;
   protected readonly productService_: ProductService;
+  protected readonly cartService_: CartService;
   protected readonly orderRepository_: typeof OrderRepository;
   protected readonly lineItemRepository_: typeof LineItemRepository;
   protected readonly shippingMethodRepository_: typeof ShippingMethodRepository;
+  protected readonly draftOrderRepository_: typeof DraftOrderRepository;
+  
 
   constructor({
     manager,
@@ -45,6 +55,9 @@ export default class OrderSubscriber {
     orderRepository,
     lineItemRepository,
     shippingMethodRepository,
+    draftOrderService,
+    draftOrderRepository,
+    cartService,
   }: {
     manager: EntityManager;
     eventBusService: EventBusService;
@@ -53,6 +66,9 @@ export default class OrderSubscriber {
     orderRepository: typeof OrderRepository;
     lineItemRepository: typeof LineItemRepository;
     shippingMethodRepository: typeof ShippingMethodRepository;
+    draftOrderRepository: typeof DraftOrderRepository;
+    draftOrderService: DraftOrderService;
+    cartService: CartService;
   }) {
     this.manager_ = manager;
     this.eventBusService_ = eventBusService;
@@ -61,6 +77,10 @@ export default class OrderSubscriber {
     this.orderRepository_ = orderRepository;
     this.lineItemRepository_ = lineItemRepository;
     this.shippingMethodRepository_ = shippingMethodRepository;
+    this.draftOrderService_= draftOrderService;
+    this.draftOrderRepository_= draftOrderRepository;
+    this.cartService_= cartService;
+    
 
     // eventBusService.subscribe(
     //   OrderService.Events.PLACED,
@@ -147,8 +167,21 @@ export default class OrderSubscriber {
 
 
     const orderRepo = this.orderRepository_;
+    const orderService = this.orderService_;
+    const draftOrderService = this.draftOrderService_;
+    const draftOrderRepo = this.draftOrderRepository_;
     const lineItemRepo = this.lineItemRepository_;
     const shippingMethodRepo = this.shippingMethodRepository_;
+    const cartService = this.cartService_;
+
+    
+    // draftOrderService.create()
+
+    // cartService.authorizePayment()
+  
+    // orderService.createFromCart()
+
+    // orderService.capturePayment()
 
     for (const store_id in groupedItems) {
       // Create order
