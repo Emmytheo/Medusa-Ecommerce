@@ -9,7 +9,7 @@ import {
   Selector,
   FindConfig,
   DraftOrderService,
-  CartService
+  CartService,
 } from "@medusajs/medusa";
 import { LineItemRepository } from "@medusajs/medusa/dist/repositories/line-item";
 import { OrderRepository } from "../repositories/order";
@@ -19,7 +19,6 @@ import { EntityManager } from "typeorm";
 import { Product } from "../models/product";
 import { Order } from "../models/order";
 import DraftOrderRepository from "@medusajs/medusa/dist/repositories/draft-order";
-
 
 type InjectedDependencies = {
   manager: EntityManager;
@@ -45,7 +44,6 @@ export default class OrderSubscriber {
   protected readonly lineItemRepository_: typeof LineItemRepository;
   protected readonly shippingMethodRepository_: typeof ShippingMethodRepository;
   protected readonly draftOrderRepository_: typeof DraftOrderRepository;
-  
 
   constructor({
     manager,
@@ -77,10 +75,9 @@ export default class OrderSubscriber {
     this.orderRepository_ = orderRepository;
     this.lineItemRepository_ = lineItemRepository;
     this.shippingMethodRepository_ = shippingMethodRepository;
-    this.draftOrderService_= draftOrderService;
-    this.draftOrderRepository_= draftOrderRepository;
-    this.cartService_= cartService;
-    
+    this.draftOrderService_ = draftOrderService;
+    this.draftOrderRepository_ = draftOrderRepository;
+    this.cartService_ = cartService;
 
     // eventBusService.subscribe(
     //   OrderService.Events.PLACED,
@@ -122,37 +119,49 @@ export default class OrderSubscriber {
         item.variant.product_id,
         {
           select: [
-            'collection_id', 'created_at',
-            'deleted_at',    'description',
-            'discountable',  'external_id',
-            'handle',        'height',
-            'hs_code',       'id',
-            'is_giftcard',   'length',
-            'material',      'metadata',
-            'mid_code',      'origin_country',
-            'status',        'store_id',
-            'subtitle',      'thumbnail',
-            'title',         'type_id',
-            'updated_at',    'weight',
-            'width',
-            "store_id"
+            "collection_id",
+            "created_at",
+            "deleted_at",
+            "description",
+            "discountable",
+            "external_id",
+            "handle",
+            "height",
+            "hs_code",
+            "id",
+            "is_giftcard",
+            "length",
+            "material",
+            "metadata",
+            "mid_code",
+            "origin_country",
+            "status",
+            "store_id",
+            "subtitle",
+            "thumbnail",
+            "title",
+            "type_id",
+            "updated_at",
+            "weight",
+            "width",
+            "store_id",
           ],
           relations: [
-            'collection',
-            'images',
-            'options',
-            'profiles',
-            'sales_channels',
-            'store',
-            'tags',
-            'type',
-            'variants',
-            'variants.options',
-            'variants.prices'
-          ]
+            "collection",
+            "images",
+            "options",
+            "profiles",
+            "sales_channels",
+            "store",
+            "tags",
+            "type",
+            "variants",
+            "variants.options",
+            "variants.prices",
+          ],
         }
       );
-      
+
       // Extract the relevant properties
       const { store_id } = product;
       if (!store_id) {
@@ -165,7 +174,6 @@ export default class OrderSubscriber {
       groupedItems[store_id].push(item);
     }
 
-
     const orderRepo = this.orderRepository_;
     const orderService = this.orderService_;
     const draftOrderService = this.draftOrderService_;
@@ -173,15 +181,6 @@ export default class OrderSubscriber {
     const lineItemRepo = this.lineItemRepository_;
     const shippingMethodRepo = this.shippingMethodRepository_;
     const cartService = this.cartService_;
-
-    
-    // draftOrderService.create()
-
-    // cartService.authorizePayment()
-  
-    // orderService.createFromCart()
-
-    // orderService.capturePayment()
 
     for (const store_id in groupedItems) {
       // Create order
@@ -208,7 +207,7 @@ export default class OrderSubscriber {
           order_id: orderResult.id,
         });
 
-        await shippingMethodRepo.save(newShippingMethod);
+        // await shippingMethodRepo.save(newShippingMethod);
       }
 
       // Create line items
@@ -222,6 +221,24 @@ export default class OrderSubscriber {
         });
         await lineItemRepo.save(newItem);
       }
+
+      draftOrderService.create({
+        email: order.email,
+        billing_address_id: order.billing_address_id,
+        billing_address: order.billing_address,
+        shipping_address_id: order.shipping_address_id,
+        shipping_address: order.shipping_address,
+        region_id: order.region_id,
+        discounts: order.discounts,
+        customer_id: order.customer_id,
+        shipping_methods: [],
+      });
+
+      // cartService.authorizePayment()
+
+      // orderService.createFromCart()
+
+      // orderService.capturePayment()
     }
   }
 
