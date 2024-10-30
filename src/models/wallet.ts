@@ -8,15 +8,14 @@ export class Wallet extends BaseEntity {
   @Index()
   @OneToOne(() => User)
   @JoinColumn({ name: "user_id" })
-  user: User
+  user: User;
 
-  @Column({ unique: true })
-  user_id: string
+  @Column({ type: "character varying", unique: true })
+  user_id: string;
 
-  
   @Column({ type: "jsonb", default: {} })
-  total_balance: Record<string, number> 
+  total_balance: Record<string, number>;
 
   @OneToMany(() => WalletAccount, (walletAccount) => walletAccount.wallet)
-  accounts: WalletAccount[]
+  accounts: WalletAccount[];
 }

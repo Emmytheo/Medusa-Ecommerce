@@ -1,6 +1,8 @@
+// services/wallet-payment-processor
+
 import { Service, Container } from "typedi";
 import { WalletRepository } from "../repositories/wallet";
-import { WalletAccountTransaction } from "../models/wallet-account-transaction"; // Import transaction model
+import { WalletAccountTransaction } from "../models/wallet-account-transaction";
 import { TransactionBaseService } from "@medusajs/medusa";
 import { EntityManager } from "typeorm";
 import { InjectManager } from "typeorm-typedi-extensions";
@@ -9,14 +11,21 @@ import { InjectManager } from "typeorm-typedi-extensions";
 class WalletPaymentProcessor extends TransactionBaseService {
   constructor(
     private walletRepository: typeof WalletRepository,
-    @InjectManager() manager: EntityManager, // Ensure you're injecting the manager
+    @InjectManager() manager: EntityManager,
     container: Container
   ) {
-    super(container); // Pass the container to the super constructor
+    super(container);
   }
 
-  async authorizePayment(userId: string, amount: number): Promise<boolean> {
-    const balance = await this.walletRepository.getWalletBalance(userId);
+  async authorizePayment(
+    userId: string,
+    amount: number,
+    currency: string
+  ): Promise<boolean> {
+    const balance = await this.walletRepository.getWalletBalance(
+      userId,
+      currency
+    );
     return balance >= amount;
   }
 
@@ -24,10 +33,13 @@ class WalletPaymentProcessor extends TransactionBaseService {
     userId: string,
     walletAccountId: string,
     amount: number,
+    currency: string,
     type: "debit" | "credit"
   ): Promise<WalletAccountTransaction> {
-    const wallet = await this.walletRepository.getWallet(userId);
-    const currentBalance = await this.walletRepository.getWalletBalance(userId);
+    const currentBalance = await this.walletRepository.getWalletBalance(
+      userId,
+      currency
+    );
 
     if (type === "debit" && currentBalance < amount) {
       throw new Error("Insufficient funds");
@@ -35,13 +47,14 @@ class WalletPaymentProcessor extends TransactionBaseService {
 
     const adjustment = type === "credit" ? amount : -amount;
 
-    // Update wallet balance
-    await this.walletRepository.updateBalance(userId, adjustment);
+    // Update wallet balance for the specified currency
+    await this.walletRepository.updateBalance(userId, currency, adjustment);
 
     // Record the transaction
     const transaction = await this.createTransaction(
       walletAccountId,
       amount,
+      currency,
       type,
       this.manager_
     );
@@ -52,8 +65,9 @@ class WalletPaymentProcessor extends TransactionBaseService {
   private async createTransaction(
     walletAccountId: string,
     amount: number,
+    currency: string,
     type: "debit" | "credit",
-    manager: EntityManager // Use EntityManager for transactional operations
+    manager: EntityManager
   ): Promise<WalletAccountTransaction> {
     const transactionRepo = manager.getRepository(WalletAccountTransaction);
 
@@ -61,8 +75,8 @@ class WalletPaymentProcessor extends TransactionBaseService {
       wallet_account_id: walletAccountId,
       amount,
       type,
-      status: "pending", // Default status; can be updated later
-      metadata: {}, // Additional data can be added here
+      status: "pending",
+      metadata: { currency }, // Store currency in metadata for reference
     });
 
     return await transactionRepo.save(transaction);
