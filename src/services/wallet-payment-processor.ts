@@ -8,7 +8,7 @@ import { EntityManager } from "typeorm";
 import { InjectManager } from "typeorm-typedi-extensions";
 
 @Service()
-class WalletPaymentProcessor extends TransactionBaseService {
+class WalletPaymentProcessorService extends TransactionBaseService {
   constructor(
     private walletRepository: typeof WalletRepository,
     @InjectManager() manager: EntityManager,
@@ -83,4 +83,4 @@ class WalletPaymentProcessor extends TransactionBaseService {
   }
 }
 
-export default WalletPaymentProcessor;
+export default WalletPaymentProcessorService;

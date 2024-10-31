@@ -3,6 +3,7 @@ import {
   QueryRunner,
   Table,
   TableForeignKey,
+  TableColumn,
 } from "typeorm";
 
 export class WalletAccountsAndOrderSplits1730295740496
@@ -37,7 +38,6 @@ export class WalletAccountsAndOrderSplits1730295740496
         ],
       })
     );
-
 
     // Foreign key for Wallet <-> User
     await queryRunner.createForeignKey(
@@ -80,8 +80,8 @@ export class WalletAccountsAndOrderSplits1730295740496
           {
             name: "updated_at",
             type: "timestamp",
-            default: "CURRENT_TIMESTAMP",
             onUpdate: "CURRENT_TIMESTAMP",
+            default: "CURRENT_TIMESTAMP",
           },
         ],
       })

@@ -65,29 +65,19 @@ const plugins = [
 ];
 
 const modules = {
-  // Register the Exchange Rate Service
-  // exchangeRateService: {
-  //   resolve: path.join(__dirname, "src", "services", "exchange-rate"),
+  // Uncomment and configure eventBus and cacheService if needed
+  // eventBus: {
+  //   resolve: "@medusajs/event-bus-redis",
   //   options: {
-  //     api_key: process.env.OPEN_EXCHANGE_RATES_API_KEY,
+  //     redisUrl: REDIS_URL,
   //   },
   // },
-  // exchangeRateRepository: {
-  //   resolve: path.join(__dirname, "src", "repositories", "exchange-rate"),
-  // },
-  // Uncomment and configure eventBus and cacheService if needed
-  /*eventBus: {
-    resolve: "@medusajs/event-bus-redis",
-    options: {
-      redisUrl: REDIS_URL,
-    },
-  },
   cacheService: {
     resolve: "@medusajs/cache-redis",
     options: {
       redisUrl: REDIS_URL,
     },
-  },*/
+  },
 };
 
 const projectConfig = {
