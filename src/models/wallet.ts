@@ -1,7 +1,14 @@
-import { BaseEntity } from "@medusajs/medusa"
-import { Entity, Column, OneToMany, Index, OneToOne, JoinColumn } from "typeorm"
-import { WalletAccount } from "./wallet-account"
-import { User } from "./user"
+import { BaseEntity } from "@medusajs/medusa";
+import {
+  Entity,
+  Column,
+  OneToMany,
+  Index,
+  OneToOne,
+  JoinColumn,
+} from "typeorm";
+import { WalletAccount } from "./wallet-account";
+import { User } from "./user";
 
 @Entity()
 export class Wallet extends BaseEntity {

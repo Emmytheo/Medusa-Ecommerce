@@ -66,12 +66,12 @@ const plugins = [
 
 const modules = {
   // Uncomment and configure eventBus and cacheService if needed
-  // eventBus: {
-  //   resolve: "@medusajs/event-bus-redis",
-  //   options: {
-  //     redisUrl: REDIS_URL,
-  //   },
-  // },
+  eventBus: {
+    resolve: "@medusajs/event-bus-redis",
+    options: {
+      redisUrl: REDIS_URL,
+    },
+  },
   cacheService: {
     resolve: "@medusajs/cache-redis",
     options: {

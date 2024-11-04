@@ -22,7 +22,7 @@ import { WalletAccountRepository } from "../repositories/wallet-account";
 import { WalletAccountTransactionRepository } from "../repositories/wallet-account-transaction";
 import { PaymentRepository } from "@medusajs/medusa/dist/repositories/payment";
 import { ShippingMethodRepository } from "@medusajs/medusa/dist/repositories/shipping-method";
-import { EntityManager } from "typeorm";
+// import { getManager } from "typeorm";
 import { Product } from "../models/product";
 import { Order } from "../models/order";
 import DraftOrderRepository from "@medusajs/medusa/dist/repositories/draft-order";
@@ -487,6 +487,7 @@ export default async function orderPlacedHandler({
 
     const store = await getStore(store_id);
 
+    
     const walletAccount = await createWalletAccount(
       user.id,
       store.default_currency_code
@@ -501,7 +502,6 @@ export default async function orderPlacedHandler({
     // using new_order, find the store owners wallet, record and credit them here
   }
 }
-
 
 async function findUserByStoreId(store_id: string): Promise<User | null> {
   const userRepository = this.manager_.getRepository(User);
@@ -542,10 +542,9 @@ async function recordAndCreditTransaction(
   );
 }
 
-
 export const config: SubscriberConfig = {
   event: OrderService.Events.PLACED,
   // context: {
   //   subscriberId: "order.placed",
   // },
-}
+};

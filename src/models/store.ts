@@ -1,7 +1,5 @@
-import { Entity, OneToMany, JoinColumn } from "typeorm"
-import {
-  Store as MedusaStore,
-} from "@medusajs/medusa"
+import { Entity, OneToMany, JoinColumn } from "typeorm";
+import { Store as MedusaStore } from "@medusajs/medusa";
 import { User } from "./user";
 import { Product } from "./product";
 import { Order } from "./order";
@@ -16,6 +14,6 @@ export class Store extends MedusaStore {
   products?: Product[];
 
   @OneToMany(() => Order, (order) => order.store)
-  @JoinColumn({ name: 'id', referencedColumnName: 'store_id' })
+  @JoinColumn({ name: "id", referencedColumnName: "store_id" })
   orders?: Order[];
 }
