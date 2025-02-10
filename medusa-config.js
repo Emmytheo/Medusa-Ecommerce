@@ -27,12 +27,14 @@ const ADMIN_CORS =
   process.env.ADMIN_CORS || "http://localhost:7000,http://localhost:7001";
 
 // CORS to avoid issues when consuming Medusa from a client
-const STORE_CORS = process.env.STORE_CORS || "http://localhost:8000";
+const STORE_CORS = process.env.STORE_CORS || "http://localhost:8000,http://localhost:8005";
 
 const DATABASE_URL =
   process.env.DATABASE_URL || "postgres://localhost/medusa-store";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+
+const REDIS_URLL = process.env.REDIS_URLL || "redis://localhost:6379";
 
 const plugins = [
   `medusa-fulfillment-manual`,
@@ -42,6 +44,13 @@ const plugins = [
     /** @type {import("medusa-payment-paystack").PluginOptions} */
     options: {
       secret_key: process.env.PS_KEY,
+    },
+  },
+  {
+    resolve: `medusa-payment-flutterwave-pro`,
+    /** @type {import("medusa-payment-flutterwave-pro").PluginOptions} */
+    options: {
+      secret_key: process.env.FW_KEY,
     },
   },
   {
@@ -66,18 +75,18 @@ const plugins = [
 
 const modules = {
   // Uncomment and configure eventBus and cacheService if needed
-  eventBus: {
-    resolve: "@medusajs/event-bus-redis",
-    options: {
-      redisUrl: REDIS_URL,
-    },
-  },
-  cacheService: {
-    resolve: "@medusajs/cache-redis",
-    options: {
-      redisUrl: REDIS_URL,
-    },
-  },
+  // eventBus: {
+  //   resolve: "@medusajs/event-bus-redis",
+  //   options: {
+  //     redisUrl: REDIS_URL,
+  //   },
+  // },
+  // cacheService: {
+  //   resolve: "@medusajs/cache-redis",
+  //   options: {
+  //     redisUrl: REDIS_URL,
+  //   },
+  // },
 };
 
 const projectConfig = {
@@ -87,7 +96,7 @@ const projectConfig = {
   database_url: DATABASE_URL,
   admin_cors: ADMIN_CORS,
   // Uncomment the following lines to enable REDIS
-  redis_url: REDIS_URL
+  // redis_url: REDIS_URL
 };
 
 module.exports = {

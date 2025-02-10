@@ -15,17 +15,21 @@ export const WalletAccountTransactionRepository = dataSource
     },
 
     async createTransaction(
-      accountId: string,
+      walletAccountId: string,
       amount: number,
-      type: string,
-      description?: string
+      currency: string,
+      type: "debit" | "credit"
+      // manager: EntityManager
     ): Promise<WalletAccountTransaction> {
+      
       const transaction = this.create({
-        account_id: accountId,
+        wallet_account_id: walletAccountId,
         amount,
         type,
-        description,
+        status: "pending",
+        metadata: { currency }, // Store currency in metadata for reference
       });
+
       return this.save(transaction);
     },
   });

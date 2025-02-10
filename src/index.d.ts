@@ -31,5 +31,16 @@ export declare module "@medusajs/medusa/dist/models/product" {
   }
 }
 
+export declare module "models/wallet-account" {
+  declare interface WalletAccount {
+    wallet: Wallet;
+    wallet_id: string;
+    currency: string;
+    account_numbers: string[];
+    balance: number;
+    transactions: WalletAccountTransaction[];
+  }
+}
+
 // // If Wallet is not already imported, import it as well
 // import { Wallet } from "../models/wallet";

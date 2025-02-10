@@ -44,6 +44,7 @@ class ProductService extends MedusaProductService {
     config.select?.push("store_id");
 
     config.relations?.push("store");
+    // config.relations?.push("variants.calculated_price");
 
     return await super.list(selector, config);
   }
@@ -58,6 +59,7 @@ class ProductService extends MedusaProductService {
     config ??= {}; // You can also add an initializer on the argument
     config.relations ??= [];
     config.relations.push("store");
+    // config.relations?.push("variants.calculated_price");
     // config.relations.push("store_id");
 
     return await super.listAndCount(selector, config);

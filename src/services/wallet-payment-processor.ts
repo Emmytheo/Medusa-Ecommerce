@@ -6,15 +6,23 @@ import { WalletAccountTransaction } from "../models/wallet-account-transaction";
 import { TransactionBaseService } from "@medusajs/medusa";
 import { EntityManager } from "typeorm";
 import { InjectManager } from "typeorm-typedi-extensions";
+import WalletAccountTransactionRepository from "src/repositories/wallet-account-transaction";
+import WalletAccountRepository from "src/repositories/wallet-account";
 
 @Service()
 class WalletPaymentProcessorService extends TransactionBaseService {
-  constructor(
-    private walletRepository: typeof WalletRepository,
-    @InjectManager() manager: EntityManager,
-    container: Container
-  ) {
-    super(container);
+  protected readonly walletRepository: typeof WalletRepository;
+  protected readonly walletAccountRepository: typeof WalletAccountRepository;
+  protected readonly walletAccountTransactionRepository: typeof WalletAccountTransactionRepository;
+
+  constructor(container, options) {
+    // @ts-expect-error prefer-rest-params
+    super(...arguments);
+    this.walletRepository = container.walletRepository;
+    this.walletAccountRepository =
+      container.walletAccountRepository;
+      this.walletAccountTransactionRepository =
+      container.walletAccountTransactionRepository;
   }
 
   async authorizePayment(
@@ -22,10 +30,10 @@ class WalletPaymentProcessorService extends TransactionBaseService {
     amount: number,
     currency: string
   ): Promise<boolean> {
-    const balance = await this.walletRepository.getWalletBalance(
-      userId,
-      currency
+    const walletRepo = this.activeManager_.withRepository(
+      this.walletRepository
     );
+    const balance = await walletRepo.getWalletBalance(userId, currency);
     return balance >= amount;
   }
 
@@ -36,10 +44,16 @@ class WalletPaymentProcessorService extends TransactionBaseService {
     currency: string,
     type: "debit" | "credit"
   ): Promise<WalletAccountTransaction> {
-    const currentBalance = await this.walletRepository.getWalletBalance(
-      userId,
-      currency
+    const walletRepo = this.activeManager_.withRepository(
+      this.walletRepository
     );
+    const walletAccountRepo = this.activeManager_.withRepository(
+      this.walletAccountRepository
+    );
+    const walletAccountTransactionRepo = this.activeManager_.withRepository(
+      this.walletAccountTransactionRepository
+    );
+    const currentBalance = await walletRepo.getWalletBalance(userId, currency);
 
     if (type === "debit" && currentBalance < amount) {
       throw new Error("Insufficient funds");
@@ -50,36 +64,19 @@ class WalletPaymentProcessorService extends TransactionBaseService {
     // Update wallet balance for the specified currency
     await this.walletRepository.updateBalance(userId, currency, adjustment);
 
+    const wa = await this.walletAccountRepository.updateAccountBalance(walletAccountId, adjustment);
+
+    // console.log(wa);
     // Record the transaction
-    const transaction = await this.createTransaction(
+    const transaction = await walletAccountTransactionRepo.createTransaction(
       walletAccountId,
-      amount,
+      parseFloat(amount.toFixed(2)),
       currency,
-      type,
-      this.manager_
+      type
+      // this.manager_
     );
 
     return transaction;
-  }
-
-  private async createTransaction(
-    walletAccountId: string,
-    amount: number,
-    currency: string,
-    type: "debit" | "credit",
-    manager: EntityManager
-  ): Promise<WalletAccountTransaction> {
-    const transactionRepo = manager.getRepository(WalletAccountTransaction);
-
-    const transaction = transactionRepo.create({
-      wallet_account_id: walletAccountId,
-      amount,
-      type,
-      status: "pending",
-      metadata: { currency }, // Store currency in metadata for reference
-    });
-
-    return await transactionRepo.save(transaction);
   }
 }
 

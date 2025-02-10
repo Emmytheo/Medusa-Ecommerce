@@ -6,6 +6,8 @@ import {
   Index,
   OneToOne,
   JoinColumn,
+  PrimaryGeneratedColumn,
+  PrimaryColumn,
 } from "typeorm";
 import { WalletAccount } from "./wallet-account";
 import { User } from "./user";
@@ -19,6 +21,9 @@ export class Wallet extends BaseEntity {
 
   @Column({ type: "character varying", unique: true })
   user_id: string;
+
+  @Column({ type: "uuid" }) 
+  id: string;
 
   @Column({ type: "jsonb", default: {} })
   total_balance: Record<string, number>;

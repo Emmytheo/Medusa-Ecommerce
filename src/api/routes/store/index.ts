@@ -1,6 +1,6 @@
 import { Router } from "express";
 import customRouteHandler from "./custom-route-handler";
-import { wrapHandler } from "@medusajs/medusa";
+import { wrapHandler } from "@medusajs/utils";
 
 // Initialize a custom router
 const router = Router();
