@@ -38,9 +38,9 @@ class UserService extends MedusaUserService {
 
     const newUser = await super.create(user, password);
 
-    // Create a wallet for the new user
-    const walletRepo = this.manager_.withRepository(this.walletRepository_);
-    await walletRepo.createWallet(newUser.id);
+    // // Create a wallet for the new user
+    // const walletRepo = this.manager_.withRepository(this.walletRepository_);
+    // await walletRepo.createWallet(newUser.id);
 
     return newUser;
   }
