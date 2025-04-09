@@ -6,9 +6,10 @@ import {
   ManyToOne,
   OneToOne,
 } from "typeorm";
-import { User as MedusaUser } from "@medusajs/medusa";
+import { generateEntityId, User as MedusaUser } from "@medusajs/medusa";
 import { Store } from "./store";
 import { Wallet } from "./wallet";
+
 
 @Entity()
 export class User extends MedusaUser {
