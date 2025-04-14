@@ -1,4 +1,5 @@
 import { Text, clx } from "@medusajs/ui"
+import * as React from "react";
 
 type CardProps = {
   icon?: React.ReactNode

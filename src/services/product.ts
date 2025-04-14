@@ -76,11 +76,7 @@ class ProductService extends MedusaProductService {
 
     const product = await super.retrieve(productId, config);
 
-    if (
-      product.store?.id &&
-      this.loggedInUser_?.store_id &&
-      product.store.id !== this.loggedInUser_.store_id
-    ) {
+    if (this.loggedInUser_ && (this.loggedInUser_?.store_id && product.store.id !== this.loggedInUser_.store_id || this.loggedInUser_?.role !== 'admin')) {
       // Throw error if you don't want a product to be accessible to other stores
       throw new Error("Product does not exist in store.");
     }

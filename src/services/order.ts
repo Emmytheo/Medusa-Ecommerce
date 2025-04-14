@@ -29,17 +29,18 @@ class OrderService extends MedusaOrderService {
     if(this.loggedInUser_){
       config.relations = [
         ...(config.relations || []),
-        'store'
+        'store', 'region'
       ]
       config.select = [
         ...(config.select || []),
-        'store_id'
+        'store_id', 'region_id'
       ]
     }
     
+    
     const order = await super.retrieve(orderId, config);
     
-    if (this.loggedInUser_ && this.loggedInUser_?.store_id && order.store_id !== this.loggedInUser_.store_id) {
+    if (this.loggedInUser_ && (this.loggedInUser_?.store_id && order.store_id !== this.loggedInUser_.store_id || this.loggedInUser_?.role !== 'admin')) {
       // Throw error if you don't want an order to be accessible to other stores
       throw new Error('Order does not exist in store.');
     }
