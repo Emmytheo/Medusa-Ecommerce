@@ -1,4 +1,4 @@
-import UserService from "../../services/user";
+import { UserService } from "@medusajs/medusa";
 import { User } from "../../models/user";
 
 export async function registerLoggedInUser(req, res, next) {
@@ -8,7 +8,7 @@ export async function registerLoggedInUser(req, res, next) {
     const userService = req.scope.resolve("userService") as UserService;
     loggedInUser = await userService.retrieve(req.user.userId, {
       select: ["id", "store_id"],
-    }) as unknown as User;
+    });
   }
 
   req.scope.register({

@@ -76,7 +76,11 @@ class ProductService extends MedusaProductService {
 
     const product = await super.retrieve(productId, config);
 
-    if (this.loggedInUser_ && (this.loggedInUser_?.store_id && product.store.id !== this.loggedInUser_.store_id || this.loggedInUser_?.role !== 'admin')) {
+    if (
+      product.store?.id &&
+      this.loggedInUser_?.store_id &&
+      product.store.id !== this.loggedInUser_.store_id
+    ) {
       // Throw error if you don't want a product to be accessible to other stores
       throw new Error("Product does not exist in store.");
     }
@@ -85,8 +89,10 @@ class ProductService extends MedusaProductService {
   }
 
   async create(productObject: CreateProductInput): Promise<Product> {
-    if (!productObject.store_id && this.loggedInUser_?.store_id) {
+    console.log(productObject, this.loggedInUser_?.store_id)
+    if (!productObject.store_id && this.loggedInUser_) {
       productObject.store_id = this.loggedInUser_.store_id;
+      console.log(productObject, this.loggedInUser_?.store_id)
     }
 
     return await super.create(productObject);
