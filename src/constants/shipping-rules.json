@@ -1,0 +1,37 @@
+[
+    {
+        "location": "Lagos",
+        "transport_type": "bike",
+        "base_fare": 500,
+        "distance_cost": 50,
+        "weight_cost": 30,
+        "zone_modifiers": {
+            "central": 0,
+            "urban": 200,
+            "suburban": 400,
+            "rural": 700,
+            "outer": 1000
+        },
+        "speed_multiplier": {
+            "standard": 1,
+            "express": 1.5,
+            "overnight": 2
+        }
+    },
+    {
+        "location": "Abuja",
+        "transport_type": "car",
+        "base_fare": 800,
+        "distance_cost": 70,
+        "weight_cost": 50,
+        "zone_modifiers": {
+            "central": 0,
+            "outer": 500
+        },
+        "speed_multiplier": {
+            "standard": 1,
+            "express": 1.4,
+            "overnight": 1.9
+        }
+    }
+]

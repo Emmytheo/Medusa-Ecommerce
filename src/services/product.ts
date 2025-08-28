@@ -89,11 +89,20 @@ class ProductService extends MedusaProductService {
   }
 
   async create(productObject: CreateProductInput): Promise<Product> {
-    console.log(productObject, this.loggedInUser_?.store_id)
+    console.log(productObject, this.loggedInUser_)
     if (!productObject.store_id && this.loggedInUser_) {
       productObject.store_id = this.loggedInUser_.store_id;
-      console.log(productObject, this.loggedInUser_?.store_id)
     }
+    if (!productObject.store_id) {
+      throw new Error("Store ID is required to create a product.");
+    }
+    if (productObject.store_id !== this.loggedInUser_?.store_id) {
+      throw new Error("You can only create products for your own store.");
+    }
+    if (!productObject.title) {
+      throw new Error("Product title is required.");
+    }
+    
 
     return await super.create(productObject);
   }

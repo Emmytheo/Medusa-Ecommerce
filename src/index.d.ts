@@ -42,5 +42,13 @@ export declare module "models/wallet-account" {
   }
 }
 
+export declare module '@medusajs/medusa/dist/services/fulfillment/manual' {
+  // Provide minimal type declarations for ManualFulfillmentService
+  class ManualFulfillmentService {
+    calculatePrice(optionData: any, data: any, cart: any): Promise<number>;
+  }
+  export default ManualFulfillmentService;
+}
+
 // // If Wallet is not already imported, import it as well
 // import { Wallet } from "../models/wallet";

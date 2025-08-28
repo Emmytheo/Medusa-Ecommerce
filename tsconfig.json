@@ -24,6 +24,8 @@
     "**/__tests__",
     "**/__fixtures__",
     "node_modules",
+    "src/plugins/custom-manual-fulfillment/node_modules",
+    "**/*.spec.ts",
     "build",
     ".cache"
   ]

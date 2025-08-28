@@ -36,8 +36,11 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 
 const REDIS_URLL = process.env.REDIS_URLL || "redis://localhost:6379";
 
+const PORT = process.env.PORT || 9001;
+
 const plugins = [
   `medusa-fulfillment-manual`,
+  
   `medusa-payment-manual`,
   {
     resolve: `medusa-payment-paystack`,
@@ -95,12 +98,18 @@ const projectConfig = {
   store_cors: STORE_CORS,
   database_url: DATABASE_URL,
   admin_cors: ADMIN_CORS,
+  port: PORT 
   // Uncomment the following lines to enable REDIS
   // redis_url: REDIS_URL
+};
+
+const featureFlags = {
+  product_categories: true,
 };
 
 module.exports = {
   projectConfig,
   plugins,
   modules,
+  featureFlags,
 };

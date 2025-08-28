@@ -34,7 +34,10 @@
     "@medusajs/icons": "^1.0.0",
     "@medusajs/medusa": "1.20.3",
     "@medusajs/ui": "^1.0.0",
+    "@rootxpdev/medusa-email-plugin": "^0.8.0",
+    "@supabase/supabase-js": "^2.50.0",
     "@tanstack/react-query": "4.22.0",
+    "@types/react": "^19.0.8",
     "babel-preset-medusa-package": "^1.1.13",
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
@@ -49,7 +52,7 @@
     "medusa-payment-manual": "^1.0.24",
     "medusa-payment-paypal": "^6.0.2",
     "medusa-payment-paystack": "^1.1.2",
-    "medusa-payment-stripe": "^6.0.3",
+    "medusa-payment-stripe": "^6.0.11",
     "medusa-plugin-meilisearch": "^2.0.10",
     "medusa-starter-default": "file:",
     "medusa-storage-supabase": "^0.1.7",
@@ -107,10 +110,7 @@
   "resolutions": {
     "string-width": "^4.2.3",
     "wrap-ansi": "^7.0.0",
-    "@medusajs/medusa/bullmq": "5.7.1"
-  },
-  "overrides": {
-    "@medusajs/medusa/bullmq": "5.7.1"
+    "@medusajs/medusa": "1.20.3"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }
