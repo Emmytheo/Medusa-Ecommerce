@@ -1,0 +1,11 @@
+| Order Packing Status Updated
+|
+| Your order #{data.order.id} packing status has been updated.
+if data.update.packing_status
+  |
+  | New status: #{data.update.packing_status}
+if data.update.packed_at
+  |
+  | Packed at: #{data.update.packed_at}
+|
+| Thank you for your business!

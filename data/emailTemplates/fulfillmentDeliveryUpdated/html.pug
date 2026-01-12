@@ -1,0 +1,7 @@
+h1 Order Delivery Status Updated
+p Your order #{data.order.id} delivery status has been updated.
+if data.status
+  p New status: #{data.status}
+if data.delivered_at
+  p Delivered at: #{data.delivered_at}
+p Thank you for your business!

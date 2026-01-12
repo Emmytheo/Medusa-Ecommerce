@@ -21,7 +21,7 @@ class WalletPaymentProcessorService extends TransactionBaseService {
     this.walletRepository = container.walletRepository;
     this.walletAccountRepository =
       container.walletAccountRepository;
-      this.walletAccountTransactionRepository =
+    this.walletAccountTransactionRepository =
       container.walletAccountTransactionRepository;
   }
 
@@ -42,7 +42,8 @@ class WalletPaymentProcessorService extends TransactionBaseService {
     walletAccountId: string,
     amount: number,
     currency: string,
-    type: "debit" | "credit"
+    type: "debit" | "credit",
+    metadata?: Record<string, unknown>
   ): Promise<WalletAccountTransaction> {
     const walletRepo = this.activeManager_.withRepository(
       this.walletRepository
@@ -72,7 +73,8 @@ class WalletPaymentProcessorService extends TransactionBaseService {
       walletAccountId,
       parseFloat(amount.toFixed(2)),
       currency,
-      type
+      type,
+      metadata
       // this.manager_
     );
 

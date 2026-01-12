@@ -1,0 +1,11 @@
+| Order Delivery Status Updated
+|
+| Your order #{data.order.id} delivery status has been updated.
+if data.status
+  |
+  | New status: #{data.status}
+if data.delivered_at
+  |
+  | Delivered at: #{data.delivered_at}
+|
+| Thank you for your business!

@@ -107,6 +107,55 @@ const featureFlags = {
   product_categories: true,
 };
 
+function printRegisteredRoutes(app) {
+  if (!app) {
+    console.warn("printRegisteredRoutes: no app passed");
+    return;
+  }
+
+  // try common locations for express router
+  const router =
+    app._router || app.router || (app.app && app.app._router) || (app.server && app.server._router);
+
+  if (!router || !router.stack) {
+    console.warn("printRegisteredRoutes: no express router found on the provided app");
+    return;
+  }
+
+  const routes = [];
+
+  const walk = (stack, prefix = "") => {
+    stack.forEach((layer) => {
+      // route registered directly on layer
+      if (layer.route && layer.route.path) {
+        const methods = Object.keys(layer.route.methods || {})
+          .map((m) => m.toUpperCase())
+          .join(",") || "ALL";
+        routes.push(`${methods} ${prefix}${layer.route.path}`);
+      }
+      // nested router
+      else if (layer.name === "router" && layer.handle && layer.handle.stack) {
+        // some layers include a regexp path; try to extract prefix if available
+        const layerPath = layer.regexp && layer.regexp.source
+          ? (layer.regexp.source.replace("\\/?", "").replace("(?=\\/|$)", "").replace("^", "").replace("$", ""))
+          : "";
+        walk(layer.handle.stack, prefix + (layerPath || ""));
+      }
+    });
+  };
+
+  walk(router.stack);
+
+  if (routes.length === 0) {
+    console.log("No registered routes found.");
+  } else {
+    console.log("Registered routes:");
+    routes.forEach((r) => console.log(r));
+  }
+}
+
+// attach utility to projectConfig so it can be invoked after Medusa's server/app is available
+projectConfig.printRegisteredRoutes = printRegisteredRoutes;
 module.exports = {
   projectConfig,
   plugins,

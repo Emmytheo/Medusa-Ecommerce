@@ -1,0 +1,132 @@
+doctype html
+html
+  head
+    meta(charset="UTF-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title Order Confirmation
+    style.
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f5f5f5;
+        padding: 20px;
+        margin: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .header {
+        background: #2c3e50;
+        color: #fff;
+        padding: 30px;
+        text-align: center;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      .logo {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 15px;
+        color: #3498db;
+      }
+      .content {
+        padding: 30px;
+      }
+      .order-id {
+        background: #ecf0f1;
+        padding: 15px;
+        border-left: 4px solid #3498db;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+      .order-id strong {
+        display: block;
+        color: #2c3e50;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+      }
+      th {
+        background: #3498db;
+        color: #fff;
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+      }
+      td {
+        padding: 12px;
+        border-bottom: 1px solid #ecf0f1;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      .total-row {
+        background: #f9f9f9;
+        font-weight: bold;
+        font-size: 16px;
+      }
+      .footer {
+        background: #ecf0f1;
+        padding: 20px;
+        text-align: center;
+        font-size: 12px;
+        color: #7f8c8d;
+      }
+      .button {
+        display: inline-block;
+        background: #3498db;
+        color: #fff;
+        padding: 12px 30px;
+        border-radius: 5px;
+        text-decoration: none;
+        margin: 20px 0;
+      }
+
+  body
+    .container
+      .header
+        .logo Rayvvin
+        h1 Thank you for your order!
+
+      .content
+        p Hi #{order.customer.first_name},
+        p Your order has been successfully placed. Here's a summary:
+
+        .order-id
+          span Order ID:
+          strong #{order.display_id}
+
+        table
+          thead
+            tr
+              th Product
+              th Quantity
+              th Unit Price
+              th Subtotal
+          tbody
+            each item in order.items
+              tr
+                td #{item.title}
+                td #{item.quantity}
+                td #{(item.unit_price / 100).toFixed(2)} #{order.currency_code.toUpperCase()}
+                td #{((item.unit_price * item.quantity) / 100).toFixed(2)} #{order.currency_code.toUpperCase()}
+            tr.total-row
+              td(colspan="3") Total Amount:
+              td #{(order.payments[0].amount / 100).toFixed(2)} #{order.currency_code.toUpperCase()}
+
+        p We'll notify you as soon as your order ships!
+        p If you have any questions, please don't hesitate to contact our support team.
+
+        a.button(href="#") Track Your Order
+
+      .footer
+        p © 2024 Rayvvin. All rights reserved.
+        p Questions? Contact us at support@rayvvin.com

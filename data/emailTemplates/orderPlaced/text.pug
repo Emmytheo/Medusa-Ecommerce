@@ -1,0 +1,11 @@
+| Thank you for your order, #{customer.first_name}!
+| 
+| Order ID: #{order.display_id}
+| 
+| Items:
+each item in order.items
+  | - #{item.title} (Qty: #{item.quantity}) - #{item.unit_price / 100} #{order.currency_code.toUpperCase()}
+| 
+| Total: #{order.total / 100} #{order.currency_code.toUpperCase()}
+| 
+| We'll notify you once it ships.

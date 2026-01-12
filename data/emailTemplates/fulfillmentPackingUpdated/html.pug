@@ -1,0 +1,7 @@
+h1 Order Packing Status Updated
+p Your order #{data.order.id} packing status has been updated.
+if data.update.packing_status
+  p New status: #{data.update.packing_status}
+if data.update.packed_at
+  p Packed at: #{data.update.packed_at}
+p Thank you for your business!

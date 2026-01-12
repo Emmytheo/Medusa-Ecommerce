@@ -1,37 +1,426 @@
-[
-    {
-        "location": "Lagos",
-        "transport_type": "bike",
-        "base_fare": 500,
-        "distance_cost": 50,
-        "weight_cost": 30,
-        "zone_modifiers": {
-            "central": 0,
-            "urban": 200,
-            "suburban": 400,
-            "rural": 700,
-            "outer": 1000
-        },
-        "speed_multiplier": {
-            "standard": 1,
-            "express": 1.5,
-            "overnight": 2
-        }
+{
+  "pricing_strategy": "state_to_state",
+  "states": [
+    "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", 
+    "Benue", "Borno", "Cross River", "Delta", "Ebonyi", "Edo", 
+    "Ekiti", "Enugu", "Gombe", "Imo", "Jigawa", "Kaduna", 
+    "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", 
+    "Nasarawa", "Niger", "Ogun", "Ondo", "Osun", "Oyo", 
+    "Plateau", "Rivers", "Sokoto", "Taraba", "Yobe", "Zamfara", 
+    "Federal Capital Territory"
+  ],
+  "fare_matrix": {
+    "Abia": {
+      "base_fare": 2300,
+      "weight_cost_per_kg": 55,
+      "state_fares": {
+        "neighboring": {"Imo": 2300, "Ebonyi": 2300, "Rivers": 2300, "Akwa Ibom": 2300},
+        "near": {"Enugu": 2800, "Anambra": 2800, "Cross River": 2800, "Bayelsa": 2800},
+        "mid": {"Delta": 3500, "Edo": 3500, "Benue": 3500, "Kogi": 3500},
+        "far": {"Lagos": 4500, "Ogun": 4500, "Ondo": 4500, "Kwara": 4500, "Plateau": 4500},
+        "extreme": {"Kano": 5800, "Kaduna": 5800, "Sokoto": 5800, "Borno": 5800, "Adamawa": 5800}
+      }
     },
-    {
-        "location": "Abuja",
-        "transport_type": "car",
-        "base_fare": 800,
-        "distance_cost": 70,
-        "weight_cost": 50,
-        "zone_modifiers": {
-            "central": 0,
-            "outer": 500
-        },
-        "speed_multiplier": {
-            "standard": 1,
-            "express": 1.4,
-            "overnight": 1.9
-        }
+    "Adamawa": {
+      "base_fare": 2900,
+      "weight_cost_per_kg": 65,
+      "state_fares": {
+        "neighboring": {"Borno": 2900, "Gombe": 2900, "Taraba": 2900},
+        "near": {"Yobe": 3600, "Bauchi": 3600, "Plateau": 3600},
+        "mid": {"Kano": 4400, "Jigawa": 4400, "Nasarawa": 4400, "Benue": 4400},
+        "far": {"Kaduna": 5600, "Niger": 5600, "Kogi": 5600, "Kwara": 5600},
+        "extreme": {"Lagos": 7100, "Oyo": 7100, "Ondo": 7100, "Rivers": 7100, "Akwa Ibom": 7100}
+      }
+    },
+    "Akwa Ibom": {
+      "base_fare": 2450,
+      "weight_cost_per_kg": 58,
+      "state_fares": {
+        "neighboring": {"Cross River": 2450, "Abia": 2450, "Rivers": 2450},
+        "near": {"Imo": 3000, "Ebonyi": 3000, "Bayelsa": 3000, "Enugu": 3000},
+        "mid": {"Anambra": 3700, "Delta": 3700, "Edo": 3700, "Benue": 3700},
+        "far": {"Lagos": 4750, "Ogun": 4750, "Ondo": 4750, "Kogi": 4750, "Kwara": 4750},
+        "extreme": {"Kano": 6050, "Kaduna": 6050, "Sokoto": 6050, "Borno": 6050}
+      }
+    },
+    "Anambra": {
+      "base_fare": 2350,
+      "weight_cost_per_kg": 54,
+      "state_fares": {
+        "neighboring": {"Enugu": 2350, "Imo": 2350, "Delta": 2350},
+        "near": {"Ebonyi": 2850, "Abia": 2850, "Rivers": 2850, "Bayelsa": 2850},
+        "mid": {"Edo": 3550, "Cross River": 3550, "Benue": 3550, "Kogi": 3550},
+        "far": {"Lagos": 4550, "Ogun": 4550, "Ondo": 4550, "Kwara": 4550, "Plateau": 4550},
+        "extreme": {"Kano": 5850, "Kaduna": 5850, "Sokoto": 5850, "Borno": 5850}
+      }
+    },
+    "Bauchi": {
+      "base_fare": 2750,
+      "weight_cost_per_kg": 62,
+      "state_fares": {
+        "neighboring": {"Gombe": 2750, "Plateau": 2750, "Yobe": 2750},
+        "near": {"Jigawa": 3400, "Kano": 3400, "Adamawa": 3400, "Taraba": 3400},
+        "mid": {"Kaduna": 4150, "Nasarawa": 4150, "Benue": 4150, "Niger": 4150},
+        "far": {"Kogi": 5350, "Kwara": 5350, "Oyo": 5350, "Osun": 5350},
+        "extreme": {"Lagos": 6750, "Ogun": 6750, "Rivers": 6750, "Akwa Ibom": 6750}
+      }
+    },
+    "Bayelsa": {
+      "base_fare": 2500,
+      "weight_cost_per_kg": 60,
+      "state_fares": {
+        "neighboring": {"Rivers": 2500, "Delta": 2500},
+        "near": {"Imo": 3100, "Abia": 3100, "Edo": 3100, "Akwa Ibom": 3100},
+        "mid": {"Anambra": 3800, "Enugu": 3800, "Cross River": 3800, "Ebonyi": 3800},
+        "far": {"Lagos": 4900, "Ogun": 4900, "Ondo": 4900, "Kogi": 4900, "Benue": 4900},
+        "extreme": {"Kano": 6200, "Kaduna": 6200, "Plateau": 6200, "Bauchi": 6200}
+      }
+    },
+    "Benue": {
+      "base_fare": 2600,
+      "weight_cost_per_kg": 60,
+      "state_fares": {
+        "neighboring": {"Nasarawa": 2600, "Taraba": 2600, "Kogi": 2600},
+        "near": {"Plateau": 3220, "Enugu": 3220, "Ebonyi": 3220, "Edo": 3220},
+        "mid": {"Anambra": 3950, "Delta": 3950, "Kwara": 3950, "Niger": 3950},
+        "far": {"Lagos": 5100, "Oyo": 5100, "Ondo": 5100, "Kaduna": 5100},
+        "extreme": {"Kano": 6400, "Sokoto": 6400, "Borno": 6400, "Yobe": 6400}
+      }
+    },
+    "Borno": {
+      "base_fare": 3100,
+      "weight_cost_per_kg": 70,
+      "state_fares": {
+        "neighboring": {"Yobe": 3100, "Adamawa": 3100},
+        "near": {"Gombe": 3900, "Bauchi": 3900, "Jigawa": 3900},
+        "mid": {"Kano": 4800, "Plateau": 4800, "Taraba": 4800, "Nasarawa": 4800},
+        "far": {"Kaduna": 6300, "Niger": 6300, "Kogi": 6300, "Benue": 6300},
+        "extreme": {"Lagos": 8100, "Oyo": 8100, "Rivers": 8100, "Akwa Ibom": 8100}
+      }
+    },
+    "Cross River": {
+      "base_fare": 2450,
+      "weight_cost_per_kg": 58,
+      "state_fares": {
+        "neighboring": {"Akwa Ibom": 2450, "Benue": 2450, "Ebonyi": 2450},
+        "near": {"Abia": 3000, "Enugu": 3000, "Rivers": 3000, "Imo": 3000},
+        "mid": {"Anambra": 3700, "Delta": 3700, "Bayelsa": 3700, "Edo": 3700},
+        "far": {"Lagos": 4750, "Ogun": 4750, "Ondo": 4750, "Kogi": 4750},
+        "extreme": {"Kano": 6050, "Kaduna": 6050, "Sokoto": 6050, "Borno": 6050}
+      }
+    },
+    "Delta": {
+      "base_fare": 2550,
+      "weight_cost_per_kg": 60,
+      "state_fares": {
+        "neighboring": {"Edo": 2550, "Anambra": 2550, "Bayelsa": 2550},
+        "near": {"Imo": 3150, "Rivers": 3150, "Abia": 3150, "Enugu": 3150},
+        "mid": {"Ebonyi": 3850, "Cross River": 3850, "Kogi": 3850, "Ondo": 3850},
+        "far": {"Lagos": 4950, "Ogun": 4950, "Oyo": 4950, "Kwara": 4950, "Benue": 4950},
+        "extreme": {"Kano": 6250, "Kaduna": 6250, "Plateau": 6250, "Bauchi": 6250}
+      }
+    },
+    "Ebonyi": {
+      "base_fare": 2350,
+      "weight_cost_per_kg": 55,
+      "state_fares": {
+        "neighboring": {"Enugu": 2350, "Cross River": 2350, "Benue": 2350},
+        "near": {"Abia": 2870, "Imo": 2870, "Anambra": 2870, "Kogi": 2870},
+        "mid": {"Delta": 3570, "Edo": 3570, "Rivers": 3570, "Akwa Ibom": 3570},
+        "far": {"Lagos": 4600, "Ogun": 4600, "Ondo": 4600, "Kwara": 4600},
+        "extreme": {"Kano": 5900, "Kaduna": 5900, "Sokoto": 5900, "Borno": 5900}
+      }
+    },
+    "Edo": {
+      "base_fare": 2400,
+      "weight_cost_per_kg": 57,
+      "state_fares": {
+        "neighboring": {"Delta": 2400, "Kogi": 2400, "Ondo": 2400},
+        "near": {"Anambra": 2940, "Enugu": 2940, "Ekiti": 2940, "Kwara": 2940},
+        "mid": {"Imo": 3640, "Abia": 3640, "Oyo": 3640, "Osun": 3640},
+        "far": {"Lagos": 4680, "Ogun": 4680, "Plateau": 4680, "Nasarawa": 4680},
+        "extreme": {"Kano": 6000, "Kaduna": 6000, "Sokoto": 6000, "Borno": 6000}
+      }
+    },
+    "Ekiti": {
+      "base_fare": 2200,
+      "weight_cost_per_kg": 52,
+      "state_fares": {
+        "neighboring": {"Ondo": 2200, "Kogi": 2200, "Osun": 2200},
+        "near": {"Edo": 2680, "Kwara": 2680, "Oyo": 2680, "Delta": 2680},
+        "mid": {"Anambra": 3350, "Enugu": 3350, "Benue": 3350, "Nasarawa": 3350},
+        "far": {"Lagos": 4300, "Abia": 4300, "Imo": 4300, "Plateau": 4300},
+        "extreme": {"Kano": 5550, "Kaduna": 5550, "Sokoto": 5550, "Borno": 5550}
+      }
+    },
+    "Enugu": {
+      "base_fare": 2350,
+      "weight_cost_per_kg": 55,
+      "state_fares": {
+        "neighboring": {"Anambra": 2350, "Ebonyi": 2350, "Kogi": 2350},
+        "near": {"Imo": 2870, "Abia": 2870, "Benue": 2870, "Delta": 2870},
+        "mid": {"Rivers": 3570, "Akwa Ibom": 3570, "Cross River": 3570, "Edo": 3570},
+        "far": {"Lagos": 4600, "Ogun": 4600, "Ondo": 4600, "Kwara": 4600},
+        "extreme": {"Kano": 5900, "Kaduna": 5900, "Sokoto": 5900, "Borno": 5900}
+      }
+    },
+    "Gombe": {
+      "base_fare": 2850,
+      "weight_cost_per_kg": 66,
+      "state_fares": {
+        "neighboring": {"Adamawa": 2850, "Bauchi": 2850, "Borno": 2850},
+        "near": {"Yobe": 3570, "Plateau": 3570, "Taraba": 3570, "Jigawa": 3570},
+        "mid": {"Kano": 4400, "Kaduna": 4400, "Nasarawa": 4400, "Benue": 4400},
+        "far": {"Kogi": 5700, "Kwara": 5700, "Niger": 5700, "Oyo": 5700},
+        "extreme": {"Lagos": 7250, "Ogun": 7250, "Rivers": 7250, "Akwa Ibom": 7250}
+      }
+    },
+    "Imo": {
+      "base_fare": 2400,
+      "weight_cost_per_kg": 57,
+      "state_fares": {
+        "neighboring": {"Abia": 2400, "Rivers": 2400, "Anambra": 2400},
+        "near": {"Enugu": 2940, "Ebonyi": 2940, "Akwa Ibom": 2940, "Bayelsa": 2940},
+        "mid": {"Delta": 3640, "Cross River": 3640, "Edo": 3640, "Benue": 3640},
+        "far": {"Lagos": 4680, "Ogun": 4680, "Ondo": 4680, "Kogi": 4680},
+        "extreme": {"Kano": 6000, "Kaduna": 6000, "Sokoto": 6000, "Borno": 6000}
+      }
+    },
+    "Jigawa": {
+      "base_fare": 2950,
+      "weight_cost_per_kg": 68,
+      "state_fares": {
+        "neighboring": {"Kano": 2950, "Yobe": 2950, "Bauchi": 2950},
+        "near": {"Katsina": 3730, "Kaduna": 3730, "Gombe": 3730, "Plateau": 3730},
+        "mid": {"Niger": 4600, "Kebbi": 4600, "Nasarawa": 4600, "Benue": 4600},
+        "far": {"Kogi": 6150, "Kwara": 6150, "Oyo": 6150, "Osun": 6150},
+        "extreme": {"Lagos": 7850, "Ogun": 7850, "Rivers": 7850, "Akwa Ibom": 7850}
+      }
+    },
+    "Kaduna": {
+      "base_fare": 2850,
+      "weight_cost_per_kg": 66,
+      "state_fares": {
+        "neighboring": {"Kano": 2850, "Katsina": 2850, "Niger": 2850},
+        "near": {"Jigawa": 3570, "Bauchi": 3570, "Plateau": 3570, "Nasarawa": 3570},
+        "mid": {"Kogi": 4400, "Kwara": 4400, "Benue": 4400, "Oyo": 4400},
+        "far": {"Lagos": 5700, "Ogun": 5700, "Ondo": 5700, "Osun": 5700},
+        "extreme": {"Rivers": 7250, "Akwa Ibom": 7250, "Cross River": 7250, "Bayelsa": 7250}
+      }
+    },
+    "Kano": {
+      "base_fare": 3000,
+      "weight_cost_per_kg": 70,
+      "state_fares": {
+        "neighboring": {"Katsina": 3000, "Jigawa": 3000, "Bauchi": 3000},
+        "near": {"Kaduna": 3800, "Yobe": 3800, "Gombe": 3800, "Plateau": 3800},
+        "mid": {"Niger": 4700, "Nasarawa": 4700, "Kebbi": 4700, "Benue": 4700},
+        "far": {"Kogi": 6300, "Kwara": 6300, "Oyo": 6300, "Osun": 6300},
+        "extreme": {"Lagos": 8100, "Ogun": 8100, "Rivers": 8100, "Akwa Ibom": 8100}
+      }
+    },
+    "Katsina": {
+      "base_fare": 2950,
+      "weight_cost_per_kg": 68,
+      "state_fares": {
+        "neighboring": {"Kano": 2950, "Jigawa": 2950, "Kaduna": 2950},
+        "near": {"Kebbi": 3730, "Niger": 3730, "Zamfara": 3730, "Bauchi": 3730},
+        "mid": {"Sokoto": 4600, "Plateau": 4600, "Nasarawa": 4600, "Kogi": 4600},
+        "far": {"Kwara": 6150, "Oyo": 6150, "Osun": 6150, "Ondo": 6150},
+        "extreme": {"Lagos": 7850, "Ogun": 7850, "Rivers": 7850, "Akwa Ibom": 7850}
+      }
+    },
+    "Kebbi": {
+      "base_fare": 2900,
+      "weight_cost_per_kg": 66,
+      "state_fares": {
+        "neighboring": {"Sokoto": 2900, "Niger": 2900, "Zamfara": 2900},
+        "near": {"Katsina": 3660, "Kano": 3660, "Kaduna": 3660, "Jigawa": 3660},
+        "mid": {"Plateau": 4500, "Nasarawa": 4500, "Kogi": 4500, "Kwara": 4500},
+        "far": {"Oyo": 6000, "Osun": 6000, "Ondo": 6000, "Edo": 6000},
+        "extreme": {"Lagos": 7600, "Ogun": 7600, "Rivers": 7600, "Akwa Ibom": 7600}
+      }
+    },
+    "Kogi": {
+      "base_fare": 2500,
+      "weight_cost_per_kg": 60,
+      "state_fares": {
+        "neighboring": {"Kwara": 2500, "Nasarawa": 2500, "Edo": 2500},
+        "near": {"Benue": 3100, "Enugu": 3100, "Ekiti": 3100, "Ondo": 3100},
+        "mid": {"Anambra": 3800, "Delta": 3800, "Oyo": 3800, "Osun": 3800},
+        "far": {"Lagos": 4950, "Ogun": 4950, "Kaduna": 4950, "Plateau": 4950},
+        "extreme": {"Kano": 6300, "Sokoto": 6300, "Borno": 6300, "Yobe": 6300}
+      }
+    },
+    "Kwara": {
+      "base_fare": 2400,
+      "weight_cost_per_kg": 58,
+      "state_fares": {
+        "neighboring": {"Kogi": 2400, "Ekiti": 2400, "Oyo": 2400},
+        "near": {"Osun": 2940, "Ondo": 2940, "Edo": 2940, "Niger": 2940},
+        "mid": {"Lagos": 3640, "Ogun": 3640, "Benue": 3640, "Nasarawa": 3640},
+        "far": {"Kaduna": 4680, "Plateau": 4680, "Bauchi": 4680, "Kano": 4680},
+        "extreme": {"Borno": 6000, "Yobe": 6000, "Sokoto": 6000, "Kebbi": 6000}
+      }
+    },
+    "Lagos": {
+      "base_fare": 2000,
+      "weight_cost_per_kg": 50,
+      "state_fares": {
+        "neighboring": {"Ogun": 2000, "Oyo": 2000},
+        "near": {"Osun": 2450, "Ondo": 2450, "Ekiti": 2450, "Edo": 2450},
+        "mid": {"Delta": 3050, "Anambra": 3050, "Kogi": 3050, "Kwara": 3050},
+        "far": {"Enugu": 4000, "Imo": 4000, "Abia": 4000, "Benue": 4000},
+        "extreme": {"Kano": 5200, "Kaduna": 5200, "Plateau": 5200, "Borno": 5200}
+      }
+    },
+    "Nasarawa": {
+      "base_fare": 2550,
+      "weight_cost_per_kg": 62,
+      "state_fares": {
+        "neighboring": {"Benue": 2550, "Kogi": 2550, "Plateau": 2550},
+        "near": {"Niger": 3170, "Kaduna": 3170, "Kwara": 3170, "Enugu": 3170},
+        "mid": {"Anambra": 3900, "Delta": 3900, "Oyo": 3900, "Osun": 3900},
+        "far": {"Lagos": 5050, "Ogun": 5050, "Ondo": 5050, "Ekiti": 5050},
+        "extreme": {"Rivers": 6350, "Akwa Ibom": 6350, "Bayelsa": 6350, "Cross River": 6350}
+      }
+    },
+    "Niger": {
+      "base_fare": 2650,
+      "weight_cost_per_kg": 64,
+      "state_fares": {
+        "neighboring": {"Kaduna": 2650, "Kebbi": 2650, "Zamfara": 2650},
+        "near": {"Kano": 3300, "Katsina": 3300, "Plateau": 3300, "Nasarawa": 3300},
+        "mid": {"Kogi": 4050, "Kwara": 4050, "Benue": 4050, "Oyo": 4050},
+        "far": {"Lagos": 5250, "Ogun": 5250, "Ondo": 5250, "Osun": 5250},
+        "extreme": {"Rivers": 6650, "Akwa Ibom": 6650, "Cross River": 6650, "Bayelsa": 6650}
+      }
+    },
+    "Ogun": {
+      "base_fare": 2050,
+      "weight_cost_per_kg": 52,
+      "state_fares": {
+        "neighboring": {"Lagos": 2050, "Oyo": 2050},
+        "near": {"Osun": 2510, "Ondo": 2510, "Ekiti": 2510, "Edo": 2510},
+        "mid": {"Delta": 3110, "Anambra": 3110, "Kogi": 3110, "Kwara": 3110},
+        "far": {"Enugu": 4070, "Imo": 4070, "Abia": 4070, "Benue": 4070},
+        "extreme": {"Kano": 5300, "Kaduna": 5300, "Plateau": 5300, "Borno": 5300}
+      }
+    },
+    "Ondo": {
+      "base_fare": 2150,
+      "weight_cost_per_kg": 53,
+      "state_fares": {
+        "neighboring": {"Ekiti": 2150, "Osun": 2150, "Edo": 2150},
+        "near": {"Oyo": 2630, "Kogi": 2630, "Delta": 2630, "Kwara": 2630},
+        "mid": {"Anambra": 3300, "Enugu": 3300, "Benue": 3300, "Nasarawa": 3300},
+        "far": {"Lagos": 4250, "Imo": 4250, "Abia": 4250, "Plateau": 4250},
+        "extreme": {"Kano": 5500, "Kaduna": 5500, "Sokoto": 5500, "Borno": 5500}
+      }
+    },
+    "Osun": {
+      "base_fare": 2200,
+      "weight_cost_per_kg": 54,
+      "state_fares": {
+        "neighboring": {"Oyo": 2200, "Ekiti": 2200, "Ondo": 2200},
+        "near": {"Lagos": 2690, "Ogun": 2690, "Kwara": 2690, "Kogi": 2690},
+        "mid": {"Edo": 3370, "Delta": 3370, "Benue": 3370, "Nasarawa": 3370},
+        "far": {"Anambra": 4320, "Enugu": 4320, "Imo": 4320, "Abia": 4320},
+        "extreme": {"Kano": 5580, "Kaduna": 5580, "Plateau": 5580, "Borno": 5580}
+      }
+    },
+    "Oyo": {
+      "base_fare": 2250,
+      "weight_cost_per_kg": 55,
+      "state_fares": {
+        "neighboring": {"Osun": 2250, "Ogun": 2250, "Kwara": 2250},
+        "near": {"Lagos": 2750, "Ekiti": 2750, "Ondo": 2750, "Kogi": 2750},
+        "mid": {"Edo": 3450, "Delta": 3450, "Benue": 3450, "Nasarawa": 3450},
+        "far": {"Anambra": 4450, "Enugu": 4450, "Imo": 4450, "Abia": 4450},
+        "extreme": {"Kano": 5750, "Kaduna": 5750, "Plateau": 5750, "Borno": 5750}
+      }
+    },
+    "Plateau": {
+      "base_fare": 2700,
+      "weight_cost_per_kg": 64,
+      "state_fares": {
+        "neighboring": {"Bauchi": 2700, "Nasarawa": 2700, "Taraba": 2700},
+        "near": {"Benue": 3400, "Kaduna": 3400, "Kogi": 3400, "Niger": 3400},
+        "mid": {"Kwara": 4200, "Oyo": 4200, "Enugu": 4200, "Anambra": 4200},
+        "far": {"Lagos": 5450, "Ogun": 5450, "Ondo": 5450, "Delta": 5450},
+        "extreme": {"Rivers": 6900, "Akwa Ibom": 6900, "Bayelsa": 6900, "Cross River": 6900}
+      }
+    },
+    "Rivers": {
+      "base_fare": 2600,
+      "weight_cost_per_kg": 62,
+      "state_fares": {
+        "neighboring": {"Imo": 2600, "Abia": 2600, "Bayelsa": 2600},
+        "near": {"Akwa Ibom": 3220, "Anambra": 3220, "Enugu": 3220, "Delta": 3220},
+        "mid": {"Edo": 3950, "Cross River": 3950, "Ebonyi": 3950, "Benue": 3950},
+        "far": {"Kogi": 5100, "Kwara": 5100, "Ondo": 5100, "Osun": 5100},
+        "extreme": {"Kano": 6400, "Kaduna": 6400, "Plateau": 6400, "Bauchi": 6400}
+      }
+    },
+    "Sokoto": {
+      "base_fare": 3000,
+      "weight_cost_per_kg": 70,
+      "state_fares": {
+        "neighboring": {"Kebbi": 3000, "Zamfara": 3000},
+        "near": {"Katsina": 3820, "Niger": 3820, "Kano": 3820, "Jigawa": 3820},
+        "mid": {"Kaduna": 4750, "Plateau": 4750, "Nasarawa": 4750, "Kogi": 4750},
+        "far": {"Kwara": 6400, "Oyo": 6400, "Osun": 6400, "Ondo": 6400},
+        "extreme": {"Lagos": 8300, "Ogun": 8300, "Rivers": 8300, "Akwa Ibom": 8300}
+      }
+    },
+    "Taraba": {
+      "base_fare": 2850,
+      "weight_cost_per_kg": 66,
+      "state_fares": {
+        "neighboring": {"Adamawa": 2850, "Benue": 2850, "Plateau": 2850},
+        "near": {"Gombe": 3570, "Bauchi": 3570, "Nasarawa": 3570, "Kogi": 3570},
+        "mid": {"Enugu": 4400, "Anambra": 4400, "Ebonyi": 4400, "Cross River": 4400},
+        "far": {"Delta": 5700, "Edo": 5700, "Ondo": 5700, "Kwara": 5700},
+        "extreme": {"Lagos": 7250, "Ogun": 7250, "Oyo": 7250, "Osun": 7250}
+      }
+    },
+    "Yobe": {
+      "base_fare": 2950,
+      "weight_cost_per_kg": 68,
+      "state_fares": {
+        "neighboring": {"Borno": 2950, "Jigawa": 2950, "Bauchi": 2950},
+        "near": {"Gombe": 3710, "Kano": 3710, "Katsina": 3710, "Kaduna": 3710},
+        "mid": {"Niger": 4600, "Plateau": 4600, "Nasarawa": 4600, "Kogi": 4600},
+        "far": {"Kwara": 6150, "Oyo": 6150, "Osun": 6150, "Ondo": 6150},
+        "extreme": {"Lagos": 7850, "Ogun": 7850, "Rivers": 7850, "Akwa Ibom": 7850}
+      }
+    },
+    "Zamfara": {
+      "base_fare": 2950,
+      "weight_cost_per_kg": 68,
+      "state_fares": {
+        "neighboring": {"Kebbi": 2950, "Sokoto": 2950, "Katsina": 2950},
+        "near": {"Kano": 3710, "Jigawa": 3710, "Niger": 3710, "Kaduna": 3710},
+        "mid": {"Plateau": 4600, "Nasarawa": 4600, "Kogi": 4600, "Kwara": 4600},
+        "far": {"Oyo": 6150, "Osun": 6150, "Ondo": 6150, "Edo": 6150},
+        "extreme": {"Lagos": 7850, "Ogun": 7850, "Rivers": 7850, "Akwa Ibom": 7850}
+      }
+    },
+    "Federal Capital Territory": {
+      "base_fare": 2500,
+      "weight_cost_per_kg": 60,
+      "state_fares": {
+        "neighboring": {"Nasarawa": 2500, "Niger": 2500, "Kogi": 2500},
+        "near": {"Kaduna": 3100, "Plateau": 3100, "Benue": 3100, "Kwara": 3100},
+        "mid": {"Oyo": 3800, "Osun": 3800, "Ondo": 3800, "Edo": 3800},
+        "far": {"Lagos": 4950, "Ogun": 4950, "Delta": 4950, "Anambra": 4950},
+        "extreme": {"Rivers": 6300, "Akwa Ibom": 6300, "Bayelsa": 6300, "Cross River": 6300}
+      }
     }
-]
+  },
+  "speed_multipliers": {
+    "standard": 1,
+    "express": 1.4,
+    "overnight": 1.8
+  }
+}

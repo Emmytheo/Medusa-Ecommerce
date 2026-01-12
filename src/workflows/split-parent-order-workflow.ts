@@ -110,14 +110,16 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
     user_id: string,
     walletAccount: WalletAccount,
     amount: number,
-    currencyCode: string
+    currencyCode: string,
+    metadata?: Record<string, unknown>
   ): Promise<WalletAccountTransaction> {
     return walletPaymentProcessorService.recordTransaction(
       user_id,
       walletAccount.id,
       amount,
       currencyCode,
-      "credit"
+      "credit",
+      metadata
     );
   }
 
@@ -126,17 +128,40 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
     // Retrieve order
     const order: Order = await orderService.retrieve(input.id, {
       relations: [
-        "items",
-        "items.variant",
-        "cart",
-        "shipping_methods",
-        "payments",
+      "items",
+      "items.variant",
+      "cart",
+      "shipping_methods",
+      "payments",
       ],
     });
 
-    if(order.metadata.type === 'childOrder'){
+    // Check if order is a parent order
+    const metadata = order.metadata || {};
+    const isParentOrder =
+      (!metadata || Object.keys(metadata).length === 0) &&
+      !order.draft_order_id;
+
+    if (!isParentOrder) {
       return new StepResponse(
-        `Skipping Child Order`
+      `Order ${input.id} is not a parent order. Skipping split.`
+      );
+    }
+
+    // Check if parent order already has child orders
+    const childOrders = await orderRepository.find({
+      where: {
+      metadata: {
+        parent: input.id,
+        type: "childOrder"
+      }
+      }
+    });
+    const childOrdersExist = childOrders && childOrders.length > 0;
+
+    if (childOrdersExist) {
+      return new StepResponse(
+      `Parent order ${input.id} already has child orders. Skipping split.`
       );
     }
 
@@ -238,7 +263,7 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
         customer_id: order.customer_id,
         shipping_methods: shipping_methods,
         items: items,
-        metadata: {type: 'childOrder', parent: order.id}
+        metadata: { type: 'childOrder', parent: order.id }
       });
 
 
@@ -275,11 +300,15 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
         relations: ["cart"],
       });
 
+      // Fix: Medusa uses smallest unit (e.g. cents), but Wallet expects main unit (e.g. dollars)
+      const amountMajor = new_order.total / 100;
+
       await recordAndCreditTransaction(
         user.id,
         walletAccount,
-        new_order.total,
-        store.default_currency_code
+        amountMajor,
+        store.default_currency_code,
+        { order_id: new_order.id }
       );
     }
 
@@ -294,7 +323,7 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
 
 const splitParentOrderWorkflow = createWorkflow<WorkflowInput, WorkflowOutput>(
   "split-parent-order-workflow",
-  
+
   function (input) {
     const message = splitOrder(input);
 

@@ -18,16 +18,17 @@ export const WalletAccountTransactionRepository = dataSource
       walletAccountId: string,
       amount: number,
       currency: string,
-      type: "debit" | "credit"
+      type: "debit" | "credit",
+      metadata?: Record<string, unknown>
       // manager: EntityManager
     ): Promise<WalletAccountTransaction> {
-      
+
       const transaction = this.create({
         wallet_account_id: walletAccountId,
         amount,
         type,
         status: "pending",
-        metadata: { currency }, // Store currency in metadata for reference
+        metadata: { currency, ...metadata }, // Store currency in metadata for reference
       });
 
       return this.save(transaction);
