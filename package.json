@@ -58,6 +58,7 @@
     "medusa-storage-supabase": "^0.1.7",
     "node-cron": "^3.0.3",
     "prism-react-renderer": "^2.0.4",
+    "pug": "^3.0.3",
     "typedi": "^0.10.0",
     "typeorm": "^0.3.16",
     "typeorm-typedi-extensions": "^0.4.1"

@@ -68,9 +68,9 @@ export class OtpService extends TransactionBaseService {
     await otpRepo.save(otp);
 
     // Dispatch OTP via external notification/SMS service
-    await this.dispatchOtpNotification(phoneOrEmail, code, purpose);
+    await this.dispatchOtpNotification(phoneOrEmail, code, purpose, userId);
 
-    this.logger_.info(`[OtpService] Generated OTP for user ${userId} (${purpose}). Code valid for ${expiryMinutes} minutes.`);
+    this.logger_.info(`[OtpService] 🔑 Generated OTP for user ${userId} (${purpose}): [${code}]. Valid for ${expiryMinutes} minutes.`);
 
     return {
       success: true,
@@ -130,12 +130,12 @@ export class OtpService extends TransactionBaseService {
 
   /**
    * Dispatches OTP via direct AWS SNS SMS or Nodemailer SMTP.
-   * Completely self-contained within the Medusa server (no external microservice).
    */
   private async dispatchOtpNotification(
     recipient: string,
     code: string,
-    purpose: string
+    purpose: string,
+    userId?: string
   ): Promise<void> {
     try {
       const cleanTarget = recipient.trim();
@@ -143,11 +143,16 @@ export class OtpService extends TransactionBaseService {
 
       if (isPhone) {
         const message = `Your Afriomarkets verification code is: ${code}. Valid for 10 minutes.`;
-        const res = await this.awsSnsService_.sendSms(cleanTarget, message, "AFRIOMARKET");
+        const res = await this.awsSnsService_.sendSms(cleanTarget, message);
         if (res.success) {
-          this.logger_.info(`[OtpService] Direct AWS SNS SMS dispatched successfully to ${cleanTarget}`);
+          this.logger_.info(`[OtpService] Direct AWS SNS SMS dispatched successfully to ${cleanTarget} (MessageID: ${res.messageId})`);
         } else {
-          this.logger_.warn(`[OtpService] Direct AWS SNS SMS dispatch notice: ${res.error}. Bypass code active in dev.`);
+          this.logger_.warn(`[OtpService] Direct AWS SNS SMS dispatch notice: ${res.error}.`);
+        }
+
+        // Dual dispatch: if cleanTarget or userId resolves to an email, also send email OTP as instant fallback
+        if (userId && userId.includes("@")) {
+          await this.emailService_.sendOtpEmail(userId.trim(), code);
         }
       } else {
         // Direct Email OTP via SMTP
@@ -155,7 +160,7 @@ export class OtpService extends TransactionBaseService {
         if (res.success) {
           this.logger_.info(`[OtpService] Direct SMTP email dispatched successfully to ${cleanTarget}`);
         } else {
-          this.logger_.warn(`[OtpService] Direct SMTP email dispatch notice: ${res.error}. Bypass code active in dev.`);
+          this.logger_.warn(`[OtpService] Direct SMTP email dispatch notice: ${res.error}.`);
         }
       }
     } catch (error: any) {
