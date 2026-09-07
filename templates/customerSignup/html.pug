@@ -1,0 +1,47 @@
+doctype html
+html
+  head
+    meta(charset="UTF-8")
+    title Welcome to #{companyName}
+    style.
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f6f6f6;
+        padding: 20px;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background-color: #fff;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      }
+      h1 {
+        color: #333;
+      }
+      p {
+        color: #555;
+      }
+      .details {
+        margin-top: 20px;
+        padding: 15px;
+        background-color: #f1f1f1;
+        border-radius: 6px;
+      }
+  body
+    .container
+      h1 Welcome, #{first_name} #{last_name}!
+      p Thank you for signing up with #{companyName}.
+      p We’re thrilled to have you on board. Here's your registration info:
+      .details
+        p 
+          strong Email: 
+          | #{email}
+        p 
+          strong Phone: 
+          | #{phone}
+      p You can now access your dashboard and explore the features of our platform.
+      p If you need help, feel free to reach out to our support team.
+      p Warm regards,
+      p The #{companyName} Team

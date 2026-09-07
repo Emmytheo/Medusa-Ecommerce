@@ -32,7 +32,7 @@ class StoreService extends MedusaStoreService {
     const store = await storeRepo.findOne({
         ...config,
         relations: [
-          ...config.relations,
+          ...(config?.relations || []),
           'members'
         ],
         where: {

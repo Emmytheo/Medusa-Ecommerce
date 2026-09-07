@@ -84,7 +84,7 @@ export async function registerLoggedInUser(req, res, next) {
     let userId = req.user.id || req.user.userId;
     try {
       loggedInUser = await userService.retrieve(userId, {
-        select: ["id", "store_id"],
+        relations: ["store", "wallet"],
       });
     } catch (err) {
       res.clearCookie("jwt");

@@ -1,0 +1,35 @@
+doctype html
+html
+  head
+    meta(charset='UTF-8')
+    title Order Confirmation
+  body
+    h2 Hello #{customerName},
+    p Thank you for your order!
+    p Order ID: #{orderId}
+    p Order Date: #{orderDate}
+    p Status: #{status}
+    p Payment: #{paymentStatus}
+    if isChildOrder
+      p(style="color: #666") This is a part of a split order. Parent Order ID: #{parentOrderId}
+
+    h3 Order Summary
+    table(border='1' cellpadding='5' cellspacing='0')
+      thead
+        tr
+          th Image
+          th Item
+          th Description
+          th Qty
+          th Price
+      tbody
+        each item in items
+          tr
+            td: img(src=item.thumbnail, width="50")
+            td #{item.title}
+            td #{item.description}
+            td #{item.quantity}
+            td #{item.price} #{currency}
+
+    p(style='font-weight: bold') Total: #{orderTotal} #{currency}
+    p(style='margin-top: 30px') We’ll notify you once your order has been shipped.

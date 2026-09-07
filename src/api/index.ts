@@ -33,9 +33,9 @@ export default (rootDirectory: string): Router | Router[] => {
   router.use("/store", cors(storeCorsOptions), bodyParser.json());
   router.use("/admin", cors(adminCorsOptions), bodyParser.json());
 
-  // Add authentication to all admin routes *except* auth and account invite ones
+  // Add authentication to all admin routes *except* auth, onboarding, otp, email, and account invite ones
   router.use(
-    /\/admin\/((?!auth)(?!invites)(?!users\/reset-password)(?!users\/password-token).*)/,
+    /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,
     authenticate(),
     registerLoggedInUser // Include your old middleware
   );
@@ -43,6 +43,17 @@ export default (rootDirectory: string): Router | Router[] => {
   // Set up routers for store and admin endpoints
   const storeRouter = Router();
   const adminRouter = Router();
+
+  // Also support root-level /otp, /email, /send-email matching AWS-SNS-OTP-API paths
+  router.get("/otp", (req, res, next) => {
+    (adminRouter as any).handle(req, res, next);
+  });
+  router.post("/email", (req, res, next) => {
+    (adminRouter as any).handle(req, res, next);
+  });
+  router.post("/send-email", (req, res, next) => {
+    (adminRouter as any).handle(req, res, next);
+  });
 
   // Attach these routers to the root routes
   router.use("/store", storeRouter);

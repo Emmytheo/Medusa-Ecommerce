@@ -1,9 +1,10 @@
 import { Lifetime } from "awilix";
-import { UserService as MedusaUserService } from "@medusajs/medusa";
+import { UserService as MedusaUserService, FindConfig } from "@medusajs/medusa";
 import { User } from "../models/user";
-import { CreateUserInput as MedusaCreateUserInput } from "@medusajs/medusa/dist/types/user";
+import { CreateUserInput as MedusaCreateUserInput, FilterableUserProps } from "@medusajs/medusa/dist/types/user";
 import StoreRepository from "../repositories/store";
 import WalletRepository from "../repositories/wallet";
+import { MedusaError } from "@medusajs/utils";
 
 type CreateUserInput = {
   store_id?: string;
@@ -28,6 +29,40 @@ class UserService extends MedusaUserService {
     }
   }
 
+  async list(
+    selector: FilterableUserProps & { store_id?: string } = {},
+    config: FindConfig<User> = {}
+  ): Promise<User[]> {
+    if (!selector.store_id && this.loggedInUser_?.store_id) {
+      selector.store_id = this.loggedInUser_.store_id;
+    }
+    return await super.list(selector, config as any);
+  }
+
+  async listAndCount(
+    selector: FilterableUserProps & { store_id?: string } = {},
+    config: FindConfig<User> = {}
+  ): Promise<[User[], number]> {
+    if (!selector.store_id && this.loggedInUser_?.store_id) {
+      selector.store_id = this.loggedInUser_.store_id;
+    }
+    return await super.listAndCount(selector, config as any);
+  }
+
+  async retrieve(userId: string, config: FindConfig<User> = {}): Promise<User> {
+    if (userId === "me") {
+      const id = this.loggedInUser_?.id;
+      if (!id) {
+        throw new MedusaError(
+          MedusaError.Types.NOT_FOUND,
+          "No logged in user found"
+        );
+      }
+      return await super.retrieve(id, config);
+    }
+    return await super.retrieve(userId, config);
+  }
+
   async create(user: CreateUserInput, password: string): Promise<User> {
     if (!user.store_id) {
       const storeRepo = this.manager_.withRepository(this.storeRepository_);
@@ -47,3 +82,4 @@ class UserService extends MedusaUserService {
 }
 
 export default UserService;
+
