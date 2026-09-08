@@ -55,6 +55,24 @@ export default (rootDirectory: string): Router | Router[] => {
     (adminRouter as any).handle(req, res, next);
   });
 
+  // Support both Medusa v1 and v2 logout endpoints
+  const handleLogout = (req: any, res: any) => {
+    if (req.session) {
+      delete req.session.user_id;
+      if (typeof req.session.destroy === "function") {
+        req.session.destroy(() => {});
+      }
+    }
+    res.clearCookie("connect.sid");
+    res.clearCookie("jwt");
+    res.status(200).json({ success: true, message: "Logged out successfully" });
+  };
+
+  router.delete("/auth/session", handleLogout);
+  router.delete("/admin/auth/session", handleLogout);
+  adminRouter.delete("/auth/session", handleLogout);
+  adminRouter.delete("/session", handleLogout);
+
   // Attach these routers to the root routes
   router.use("/store", storeRouter);
   router.use("/admin", adminRouter);
