@@ -38,17 +38,52 @@ export default function vendorWalletRoutes(adminRouter: Router) {
   const router = Router();
 
   // Helper to ensure authenticated user with a linked store
-  const getAuthenticatedVendor = (req: MedusaRequest, res: MedusaResponse): { user: User; storeId: string } | null => {
-    const user = req.user as User;
-    if (!user || !user.id) {
+  const getAuthenticatedVendor = async (req: MedusaRequest, res: MedusaResponse): Promise<{ user: User; storeId: string } | null> => {
+    let user: any = null;
+    try {
+      user = req.scope.resolve("loggedInUser");
+    } catch (_) {}
+
+    if (!user) {
+      user = req.user;
+    }
+
+    let userId = user?.id || (req as any).user?.id || (req as any).user?.userId || req.session?.user_id || req.headers["x-user-id"] || req.body?.user_id;
+    const userService = req.scope.resolve("userService");
+
+    // Fallback: look up user by email if provided
+    const emailCandidate = req.body?.email || req.headers["x-user-email"] || req.query?.email;
+    if (!userId && emailCandidate && typeof emailCandidate === "string") {
+      try {
+        const found = await userService.list({ email: emailCandidate.trim().toLowerCase() }, { take: 1 });
+        if (found && found.length > 0) {
+          user = found[0];
+          userId = user.id;
+        }
+      } catch (_) {}
+    }
+
+    if (!userId) {
       res.status(401).json({ message: "Unauthorized. Please log in." });
       return null;
     }
-    if (!user.store_id) {
+
+    if (!user || !user.store_id || !user.id) {
+      try {
+        user = await userService.retrieve(userId, { relations: ["store", "wallet"] });
+      } catch (err: any) {
+        res.status(401).json({ message: "Unauthorized. User not found." });
+        return null;
+      }
+    }
+
+    const storeId = user.store_id || user.store?.id;
+    if (!storeId) {
       res.status(400).json({ message: "No store linked to this vendor user account." });
       return null;
     }
-    return { user, storeId: user.store_id };
+
+    return { user, storeId };
   };
 
   /**
@@ -101,15 +136,15 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Generates and dispatches OTP for sensitive wallet/bank operations.
    */
   router.post("/otp/send", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
     const otpService = getOtpService(container);
 
-    const { purpose } = req.body; // "bank_account_update" | "payout_request"
+    const { purpose, phone_or_email } = req.body; // "bank_account_update" | "payout_request"
     const validPurpose = purpose || "general";
-    const recipient = auth.user.email || "vendor";
+    const recipient = phone_or_email || (auth.user as any).metadata?.phone || (auth.user as any).phone || auth.user.email || "vendor";
 
     try {
       const result = await otpService.sendOtp(auth.user.id, recipient, validPurpose);
@@ -124,7 +159,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Retrieves the vendor's saved business bank account details.
    */
   router.get("/bank-account", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
@@ -143,7 +178,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Saves/Updates vendor bank account (requires OTP verification).
    */
   router.post("/bank-account/save", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
@@ -180,7 +215,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Retrieves vendor wallet balance, accounts, and transaction history.
    */
   router.get("/wallet", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
@@ -199,7 +234,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Requests a payout / withdrawal (requires OTP verification).
    */
   router.post("/payout/request", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
@@ -235,7 +270,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
    * Lists payout history for the vendor's store.
    */
   router.get("/payouts", async (req: MedusaRequest, res: MedusaResponse) => {
-    const auth = getAuthenticatedVendor(req, res);
+    const auth = await getAuthenticatedVendor(req, res);
     if (!auth) return;
 
     const container: MedusaContainer = req.scope;
