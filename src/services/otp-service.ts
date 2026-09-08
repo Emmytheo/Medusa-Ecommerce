@@ -6,6 +6,7 @@ import https from "https";
 import OtpVerificationRepository from "../repositories/otp-verification";
 import { OtpVerification } from "../models/otp-verification";
 import AwsSnsService from "./aws-sns-service";
+import TermiiService from "./termii-service";
 import EmailService from "./email-service";
 
 export interface SendOtpResult {
@@ -20,6 +21,7 @@ export class OtpService extends TransactionBaseService {
   protected readonly logger_: Logger;
   protected readonly otpVerificationRepository_: typeof OtpVerificationRepository;
   protected readonly awsSnsService_: AwsSnsService;
+  protected readonly termiiService_: TermiiService;
   protected readonly emailService_: EmailService;
 
   constructor(container: any) {
@@ -30,6 +32,11 @@ export class OtpService extends TransactionBaseService {
       this.awsSnsService_ = container.awsSnsService || new AwsSnsService(container);
     } catch (_) {
       this.awsSnsService_ = new AwsSnsService(container);
+    }
+    try {
+      this.termiiService_ = container.termiiService || new TermiiService(container);
+    } catch (_) {
+      this.termiiService_ = new TermiiService(container);
     }
     try {
       this.emailService_ = container.emailService || new EmailService(container);
@@ -143,11 +150,61 @@ export class OtpService extends TransactionBaseService {
 
       if (isPhone) {
         const message = `Your Afriomarkets verification code is: ${code}. Valid for 10 minutes.`;
-        const res = await this.awsSnsService_.sendSms(cleanTarget, message);
-        if (res.success) {
-          this.logger_.info(`[OtpService] Direct AWS SNS SMS dispatched successfully to ${cleanTarget} (MessageID: ${res.messageId})`);
+        const providerConfig = (process.env.SMS_PROVIDER || "auto").toLowerCase().trim();
+        const digits = cleanTarget.replace(/\D/g, "");
+        const isNigerian =
+          cleanTarget.startsWith("+234") ||
+          digits.startsWith("234") ||
+          (digits.startsWith("0") && digits.length === 11);
+
+        let primaryProvider: "termii" | "sns" = "sns";
+        if (providerConfig === "termii") {
+          primaryProvider = "termii";
+        } else if (providerConfig === "sns") {
+          primaryProvider = "sns";
         } else {
-          this.logger_.warn(`[OtpService] Direct AWS SNS SMS dispatch notice: ${res.error}.`);
+          // "auto": Nigerian numbers default to Termii (bypasses DND), international numbers default to SNS
+          primaryProvider = isNigerian && Boolean(process.env.TERMII_API_KEY) ? "termii" : "sns";
+        }
+
+        let sent = false;
+
+        if (primaryProvider === "termii") {
+          this.logger_.info(`[OtpService] Dispatching SMS via Termii (primary) to ${cleanTarget}...`);
+          const res = await this.termiiService_.sendSms(cleanTarget, message);
+          if (res.success) {
+            sent = true;
+            this.logger_.info(`[OtpService] Termii SMS dispatched successfully to ${cleanTarget} (MessageID: ${res.messageId})`);
+          } else {
+            this.logger_.warn(`[OtpService] Termii dispatch failed (${res.error}). Attempting automatic fallback to AWS SNS...`);
+            const fallbackRes = await this.awsSnsService_.sendSms(cleanTarget, message);
+            if (fallbackRes.success) {
+              sent = true;
+              this.logger_.info(`[OtpService] AWS SNS fallback SMS dispatched successfully to ${cleanTarget} (MessageID: ${fallbackRes.messageId})`);
+            } else {
+              this.logger_.error(`[OtpService] Both Termii and AWS SNS fallback failed for ${cleanTarget}: ${fallbackRes.error}`);
+            }
+          }
+        } else {
+          this.logger_.info(`[OtpService] Dispatching SMS via AWS SNS (primary) to ${cleanTarget}...`);
+          const res = await this.awsSnsService_.sendSms(cleanTarget, message);
+          if (res.success) {
+            sent = true;
+            this.logger_.info(`[OtpService] AWS SNS SMS dispatched successfully to ${cleanTarget} (MessageID: ${res.messageId})`);
+          } else {
+            if (process.env.TERMII_API_KEY) {
+              this.logger_.warn(`[OtpService] AWS SNS dispatch notice (${res.error}). Attempting automatic fallback to Termii...`);
+              const fallbackRes = await this.termiiService_.sendSms(cleanTarget, message);
+              if (fallbackRes.success) {
+                sent = true;
+                this.logger_.info(`[OtpService] Termii fallback SMS dispatched successfully to ${cleanTarget} (MessageID: ${fallbackRes.messageId})`);
+              } else {
+                this.logger_.error(`[OtpService] Both AWS SNS and Termii fallback failed for ${cleanTarget}: ${fallbackRes.error}`);
+              }
+            } else {
+              this.logger_.warn(`[OtpService] Direct AWS SNS SMS dispatch notice: ${res.error}.`);
+            }
+          }
         }
 
         // Dual dispatch: if cleanTarget or userId resolves to an email, also send email OTP as instant fallback

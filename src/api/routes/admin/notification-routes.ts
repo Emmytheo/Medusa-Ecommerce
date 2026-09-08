@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { MedusaContainer, MedusaRequest, MedusaResponse } from "@medusajs/medusa";
 import AwsSnsService from "../../../services/aws-sns-service";
+import TermiiService from "../../../services/termii-service";
 import EmailService from "../../../services/email-service";
 
 export default function attachNotificationRoutes(router: Router) {
@@ -9,6 +10,14 @@ export default function attachNotificationRoutes(router: Router) {
       return container.resolve("awsSnsService");
     } catch (_) {
       return new AwsSnsService(container);
+    }
+  };
+
+  const getTermiiService = (container: MedusaContainer): TermiiService => {
+    try {
+      return container.resolve("termiiService");
+    } catch (_) {
+      return new TermiiService(container);
     }
   };
 
@@ -39,17 +48,43 @@ export default function attachNotificationRoutes(router: Router) {
       return;
     }
 
+    const requestedProvider = (req.query.provider || process.env.SMS_PROVIDER || "auto").toString().toLowerCase().trim();
+    const termiiService = getTermiiService(container);
+
     const message = `Your verification code is ${otp}`;
     try {
+      const isNigerian = rawNumber.startsWith("+234") || rawNumber.startsWith("234") || /^0[789][01]\d{8}$/.test(rawNumber.replace(/\D/g, ""));
+      const useTermii = requestedProvider === "termii" || (requestedProvider === "auto" && isNigerian && Boolean(process.env.TERMII_API_KEY));
+
+      if (useTermii) {
+        const result = await termiiService.sendSms(rawNumber, message, subject);
+        if (result.success) {
+          res.status(200).json({ Provider: "termii", MessageID: result.messageId, OTP: otp });
+          return;
+        }
+      }
+
+      // SNS primary or fallback
       const result = await awsSnsService.sendSms(rawNumber, message, subject);
       if (result.success) {
-        res.status(200).json({ MessageID: result.messageId, OTP: otp });
+        res.status(200).json({ Provider: "sns", MessageID: result.messageId, OTP: otp });
       } else {
         res.status(500).json({ Error: result.error });
       }
     } catch (err: any) {
       res.status(500).json({ Error: err.message });
     }
+  });
+
+  /**
+   * GET /termii/balance
+   * Check Termii account balance
+   */
+  router.get("/termii/balance", async (req: MedusaRequest, res: MedusaResponse) => {
+    const container: MedusaContainer = req.scope;
+    const termiiService = getTermiiService(container);
+    const balanceInfo = await termiiService.getBalance();
+    res.json(balanceInfo);
   });
 
   /**

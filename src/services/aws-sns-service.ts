@@ -69,8 +69,15 @@ export class AwsSnsService extends TransactionBaseService {
     params.append("Message", message);
 
     let attrIndex = 1;
-    if (senderId) {
-      const validSenderId = senderId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 11);
+    // Set SMSType to Transactional to prevent Nigerian DND and carrier promotional blocking
+    params.append(`MessageAttributes.entry.${attrIndex}.Name`, "AWS.SNS.SMS.SMSType");
+    params.append(`MessageAttributes.entry.${attrIndex}.Value.DataType`, "String");
+    params.append(`MessageAttributes.entry.${attrIndex}.Value.StringValue`, "Transactional");
+    attrIndex++;
+
+    const activeSenderId = (senderId || process.env.AWS_SNS_SENDER_ID || "").trim();
+    if (activeSenderId) {
+      const validSenderId = activeSenderId.replace(/[^a-zA-Z0-9-]/g, "").substring(0, 11);
       if (validSenderId) {
         params.append(`MessageAttributes.entry.${attrIndex}.Name`, "AWS.SNS.SMS.SenderID");
         params.append(`MessageAttributes.entry.${attrIndex}.Value.DataType`, "String");
