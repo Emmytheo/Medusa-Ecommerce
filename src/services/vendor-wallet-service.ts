@@ -101,7 +101,9 @@ export class VendorWalletService extends TransactionBaseService {
       where: { wallet_id: wallet.id },
     });
 
-    const bankAccount = await bankAccountRepo.findByStoreId(storeId);
+    const bankAccount =
+      (await bankAccountRepo.findByStoreId(storeId)) ||
+      (await bankAccountRepo.findByUserId(userId));
 
     // Fetch transactions across all vendor accounts
     const accountIds = accounts.map((a) => a.id);
@@ -162,7 +164,9 @@ export class VendorWalletService extends TransactionBaseService {
 
     // 4. Save/Update VendorBankAccount record
     const bankAccountRepo = this.activeManager_.withRepository(this.vendorBankAccountRepository_);
-    let bankAccount = await bankAccountRepo.findByStoreId(storeId);
+    let bankAccount =
+      (await bankAccountRepo.findByStoreId(storeId)) ||
+      (await bankAccountRepo.findByUserId(userId));
 
     if (!bankAccount) {
       bankAccount = bankAccountRepo.create({

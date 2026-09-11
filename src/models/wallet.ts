@@ -22,6 +22,7 @@ export class Wallet extends BaseEntity {
   @Column({ type: "character varying", unique: true })
   user_id: string;
 
+  @PrimaryGeneratedColumn("uuid")
   @Column({ type: "uuid" }) 
   id: string;
 

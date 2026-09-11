@@ -39,10 +39,12 @@ export const OtpVerificationRepository = dataSource
         });
       }
 
-      // Check finalized state - if already finalized for an account, cannot be used again
-      qb.andWhere(
-        "(otp.metadata IS NULL OR (otp.metadata->>'finalized') IS NULL OR otp.metadata->>'finalized' != 'true')"
-      );
+      // Check finalized state - when not allowing recently used/verified OTPs, ensure not finalized
+      if (!options?.allowRecentlyUsed) {
+        qb.andWhere(
+          "(otp.metadata IS NULL OR (otp.metadata->>'finalized') IS NULL OR otp.metadata->>'finalized' != 'true')"
+        );
+      }
 
       const now = new Date();
       if (options?.allowRecentlyUsed) {

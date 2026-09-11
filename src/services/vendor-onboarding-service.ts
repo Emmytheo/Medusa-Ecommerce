@@ -164,8 +164,11 @@ export class VendorOnboardingService extends TransactionBaseService {
     const walletRepo = this.activeManager_.withRepository(this.walletRepository_);
     const walletAccountRepo = this.activeManager_.withRepository(this.walletAccountRepository_);
 
-    // 1. Verify OTP first (accepts valid or recently verified OTP)
-    const isOtpValid = await this.verifyOnboardingOtp(cleanPhone || cleanEmail, dto.otpCode, true);
+    // 1. Verify OTP first (allows unexpired or recently verified OTPs without burning prematurely)
+    let isOtpValid = await this.verifyOnboardingOtp(cleanPhone || cleanEmail, dto.otpCode, false);
+    if (!isOtpValid) {
+      isOtpValid = await this.verifyOnboardingOtp(cleanPhone || cleanEmail, dto.otpCode, true);
+    }
     if (!isOtpValid) {
       throw new Error("Invalid or expired OTP code. Please request a new verification code.");
     }
@@ -176,9 +179,9 @@ export class VendorOnboardingService extends TransactionBaseService {
     });
 
     if (existingUser) {
-      // Check if created recently (e.g. within 30 minutes) as a retry/timeout recovery
+      // Check if created recently (e.g. within 60 minutes) as a retry/timeout recovery
       const createdTime = existingUser.created_at ? new Date(existingUser.created_at).getTime() : 0;
-      const isRecent = Date.now() - createdTime < 30 * 60 * 1000;
+      const isRecent = Date.now() - createdTime < 60 * 60 * 1000;
 
       if (isRecent) {
         this.logger_.info(
@@ -207,19 +210,25 @@ export class VendorOnboardingService extends TransactionBaseService {
         if (!wallet) {
           wallet = await walletRepo.createWallet(existingUser.id);
         }
-        if (!wallet.total_balance || typeof wallet.total_balance !== "object") {
-          wallet.total_balance = {};
+        if (!wallet) {
+          wallet = await walletRepo.getWallet(existingUser.id);
         }
-        if (wallet.total_balance["NGN"] === undefined) {
-          wallet.total_balance["NGN"] = 0;
-          wallet = await walletRepo.save(wallet);
+        if (wallet) {
+          if (!wallet.total_balance || typeof wallet.total_balance !== "object") {
+            wallet.total_balance = {};
+          }
+          if (wallet.total_balance["NGN"] === undefined) {
+            wallet.total_balance["NGN"] = 0;
+            await walletRepo.update(wallet.id, { total_balance: wallet.total_balance });
+          }
         }
 
         // Ensure NGN WalletAccount is intact
-        let account = await walletAccountRepo.findOne({
+        let account = wallet ? await walletAccountRepo.findOne({
           where: { wallet_id: wallet.id, currency: "NGN" },
-        });
-        if (!account) {
+        }) : null;
+
+        if (!account && wallet) {
           const uniquePart = Date.now().toString().slice(-6);
           const randomPart = Math.floor(1000 + Math.random() * 9000).toString();
           account = walletAccountRepo.create({
@@ -232,10 +241,20 @@ export class VendorOnboardingService extends TransactionBaseService {
         }
 
         // Ensure User wallet_id link
-        if (!existingUser.wallet_id || existingUser.wallet_id !== wallet.id) {
+        if (wallet && (!existingUser.wallet_id || existingUser.wallet_id !== wallet.id)) {
           await userRepo.update(existingUser.id, { wallet_id: wallet.id });
           existingUser.wallet_id = wallet.id;
         }
+
+        // Finalize OTP on successful recovery
+        try {
+          const cleanId = cleanPhone.replace(/\D/g, "") || cleanEmail.toLowerCase();
+          await this.otpService_.verifyOtp(`onboard_${cleanId}`, "vendor_onboarding", dto.otpCode, {
+            markAsUsed: true,
+            allowRecentlyUsed: true,
+            phoneOrEmail: cleanPhone || cleanEmail,
+          });
+        } catch (_) {}
 
         return {
           success: true,
@@ -245,16 +264,16 @@ export class VendorOnboardingService extends TransactionBaseService {
             email: existingUser.email,
             store_id: store.id,
             store_name: store.name,
-            wallet_id: wallet.id,
+            wallet_id: wallet?.id,
           },
           provisioning: {
             store: { id: store.id, name: store.name, currency: store.default_currency_code },
-            wallet: { id: wallet.id, total_balance: wallet.total_balance },
+            wallet: { id: wallet?.id, total_balance: wallet?.total_balance },
             wallet_account: {
-              id: account.id,
-              currency: account.currency,
-              balance: account.balance,
-              account_number: account.account_numbers?.[0] || "",
+              id: account?.id,
+              currency: account?.currency,
+              balance: account?.balance,
+              account_number: account?.account_numbers?.[0] || "",
             },
             verified: true,
           },
@@ -303,12 +322,18 @@ export class VendorOnboardingService extends TransactionBaseService {
     if (!wallet) {
       wallet = await walletRepo.createWallet(savedUser.id);
     }
+    if (!wallet) {
+      wallet = await walletRepo.getWallet(savedUser.id);
+    }
+    if (!wallet) {
+      throw new Error("Failed to initialize vendor wallet. Please try again.");
+    }
     if (!wallet.total_balance || typeof wallet.total_balance !== "object") {
       wallet.total_balance = {};
     }
     if (wallet.total_balance["NGN"] === undefined) {
       wallet.total_balance["NGN"] = 0;
-      wallet = await walletRepo.save(wallet);
+      await walletRepo.update(wallet.id, { total_balance: wallet.total_balance });
     }
 
     // 7. Create initial NGN WalletAccount
@@ -338,6 +363,23 @@ export class VendorOnboardingService extends TransactionBaseService {
     if (!store.metadata) store.metadata = {};
     store.metadata.vendor_user_id = savedUser.id;
     await storeRepo.save(store);
+
+    // 10. Finalize OTP now that registration succeeded atomically
+    try {
+      const cleanId = cleanPhone.replace(/\D/g, "") || cleanEmail.toLowerCase();
+      await this.otpService_.verifyOtp(
+        `onboard_${cleanId}`,
+        "vendor_onboarding",
+        dto.otpCode,
+        {
+          markAsUsed: true,
+          allowRecentlyUsed: true,
+          phoneOrEmail: cleanPhone || cleanEmail,
+        }
+      );
+    } catch (e: any) {
+      this.logger_.warn(`[VendorOnboardingService] Final OTP lock notice: ${e.message}`);
+    }
 
     this.logger_.info(
       `[VendorOnboardingService] ✅ Successfully provisioned vendor ${savedUser.id}: Store ${store.id}, Wallet ${wallet.id}, Account ${walletAccount.id}`

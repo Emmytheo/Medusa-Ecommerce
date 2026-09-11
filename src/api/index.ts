@@ -33,6 +33,20 @@ export default (rootDirectory: string): Router | Router[] => {
   router.use("/store", cors(storeCorsOptions), bodyParser.json());
   router.use("/admin", cors(adminCorsOptions), bodyParser.json());
 
+  // Normalize invites payload: Medusa V1 expects { user: email, role: 'member' }
+  router.use("/admin/invites", (req, res, next) => {
+    if (req.method === "POST" && req.body) {
+      if (req.body.email && !req.body.user) {
+        req.body.user = req.body.email;
+        delete req.body.email;
+      }
+      if (!req.body.role) {
+        req.body.role = "member";
+      }
+    }
+    next();
+  });
+
   // Add authentication to all admin routes *except* auth, onboarding, otp, email, and account invite ones
   router.use(
     /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,

@@ -10,6 +10,8 @@ import {
   TrackingLink,
 } from "@medusajs/medusa";
 
+import { MedusaError } from "@medusajs/utils";
+
 class OrderService extends MedusaOrderService {
   static LIFE_TIME = Lifetime.SCOPED;
   protected readonly loggedInUser_: User | null;
@@ -28,19 +30,10 @@ class OrderService extends MedusaOrderService {
   }
 
   async retrieve(orderId: string, config?: FindConfig<Order>): Promise<Order> {
-    // console.log(
-    //   "OrderService retrieve called with orderId:",
-    //   orderId,
-    //   "and config:",
-    //   config
-    // );
-
+    config = config || ({} as FindConfig<Order>);
     if (this.loggedInUser_) {
-      if (config.relations.includes("fulfillments")) {
-        // console.log("Config relations include fulfillments");
-        // config.select = [...(config.select || []), "store_id", "region_id"];
+      if (config.relations && config.relations.includes("fulfillments")) {
         config.relations.push("store");
-        // config.select.push("store_id");
       } else {
         config.relations = [...(config.relations || []), "store", "region"];
         config.select = [...(config.select || []), "store_id", "region_id"];
@@ -65,17 +58,27 @@ class OrderService extends MedusaOrderService {
       this.loggedInUser_?.store_id &&
       (!order.store_id || order.store_id !== this.loggedInUser_.store_id)
     ) {
+      // Superadmins, admins, and logistics operators can view all orders for fulfillment & delivery
+      const userRole = (this.loggedInUser_.role || "").toLowerCase();
+      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
+      if (userRole === "admin" || accountType.includes("logistics")) {
+        return order;
+      }
+
       // Check if any of the order items belong to the user's store
       const hasStoreProduct = order.items?.some(
-        (item) => item.variant.product?.store_id === this.loggedInUser_.store_id
+        (item) => item.variant?.product?.store_id === this.loggedInUser_?.store_id
       );
 
       if (hasStoreProduct) {
         return order;
       }
 
-      // Throw error if you don't want an order to be accessible to other stores
-      throw new Error("Order does not exist in store.");
+      // Throw 404 if order does not exist for this store
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        `Order with id: ${orderId} was not found in your store.`
+      );
     }
 
     return order;
@@ -85,13 +88,14 @@ class OrderService extends MedusaOrderService {
     selector: Selector<Order>,
     config?: FindConfig<Order>
   ): Promise<Order[]> {
-    // Your existing logic for listing orders
+    config = config || ({} as FindConfig<Order>);
     if (this.loggedInUser_ && this.loggedInUser_.store_id) {
-      selector["store_id"] = this.loggedInUser_.store_id;
+      const userRole = (this.loggedInUser_.role || "").toLowerCase();
+      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
+      if (userRole !== "admin" && !accountType.includes("logistics")) {
+        selector["store_id"] = this.loggedInUser_.store_id;
+      }
     }
-
-    console.log("selector", selector);
-    console.log("config", config);
 
     config.select = config.select ?? [];
     config.select.push("store_id");
@@ -106,14 +110,16 @@ class OrderService extends MedusaOrderService {
     selector: Selector<Order>,
     config?: FindConfig<Order>
   ): Promise<[Order[], number]> {
-    // Your existing logic for listing orders
+    config = config || ({} as FindConfig<Order>);
     if (this.loggedInUser_ && this.loggedInUser_.store_id) {
-      selector["store_id"] = this.loggedInUser_.store_id;
+      const userRole = (this.loggedInUser_.role || "").toLowerCase();
+      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
+      if (userRole !== "admin" && !accountType.includes("logistics")) {
+        selector["store_id"] = this.loggedInUser_.store_id;
+      }
     }
 
-    console.log("listAndCount selector", selector);
-    console.log("listAndCount config", config);
-
+    config.select = config.select ?? [];
     config.select.push("store_id");
 
     config.relations = config.relations ?? [];

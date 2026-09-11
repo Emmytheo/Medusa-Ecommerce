@@ -77,11 +77,7 @@ export default function vendorWalletRoutes(adminRouter: Router) {
       }
     }
 
-    const storeId = user.store_id || user.store?.id;
-    if (!storeId) {
-      res.status(400).json({ message: "No store linked to this vendor user account." });
-      return null;
-    }
+    const storeId = user.store_id || user.store?.id || user.id;
 
     return { user, storeId };
   };
