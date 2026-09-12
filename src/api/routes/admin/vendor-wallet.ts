@@ -140,11 +140,20 @@ export default function vendorWalletRoutes(adminRouter: Router) {
 
     const { purpose, phone_or_email } = req.body; // "bank_account_update" | "payout_request"
     const validPurpose = purpose || "general";
-    const recipient = phone_or_email || (auth.user as any).metadata?.phone || (auth.user as any).phone || auth.user.email || "vendor";
+    const userEmail = auth.user.email;
+    const userPhone = (auth.user as any).metadata?.phone || (auth.user as any).phone;
+    const recipient = phone_or_email || userPhone || userEmail || "vendor";
 
     try {
-      const result = await otpService.sendOtp(auth.user.id, recipient, validPurpose);
-      res.status(200).json(result);
+      const result = await otpService.sendOtp(auth.user.id, recipient, validPurpose, userEmail);
+      const deliveryMsg = userEmail && recipient !== userEmail
+        ? `Verification code dispatched to ${recipient} and email ${userEmail}`
+        : `Verification code dispatched to ${recipient}`;
+      res.status(200).json({
+        ...result,
+        email: userEmail,
+        message: deliveryMsg,
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, message: "Failed to dispatch OTP", error: error.message });
     }

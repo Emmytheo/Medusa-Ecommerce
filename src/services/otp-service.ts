@@ -51,7 +51,8 @@ export class OtpService extends TransactionBaseService {
   async sendOtp(
     userId: string,
     phoneOrEmail: string,
-    purpose: string = "general"
+    purpose: string = "general",
+    extraEmail?: string
   ): Promise<SendOtpResult> {
     const otpRepo = this.activeManager_.withRepository(this.otpVerificationRepository_);
 
@@ -75,7 +76,7 @@ export class OtpService extends TransactionBaseService {
     await otpRepo.save(otp);
 
     // Dispatch OTP via external notification/SMS service
-    await this.dispatchOtpNotification(phoneOrEmail, code, purpose, userId);
+    await this.dispatchOtpNotification(phoneOrEmail, code, purpose, userId, extraEmail);
 
     this.logger_.info(`[OtpService] 🔑 Generated OTP for user ${userId} (${purpose}): [${code}]. Valid for ${expiryMinutes} minutes.`);
 
@@ -142,7 +143,8 @@ export class OtpService extends TransactionBaseService {
     recipient: string,
     code: string,
     purpose: string,
-    userId?: string
+    userId?: string,
+    extraEmail?: string
   ): Promise<void> {
     try {
       const cleanTarget = recipient.trim();
@@ -207,9 +209,33 @@ export class OtpService extends TransactionBaseService {
           }
         }
 
-        // Dual dispatch: if cleanTarget or userId resolves to an email, also send email OTP as instant fallback
-        if (userId && userId.includes("@")) {
-          await this.emailService_.sendOtpEmail(userId.trim(), code);
+        // Dual dispatch: Always send duplicate email OTP so vendor is never blocked by telco SMS delays
+        let targetEmail = extraEmail?.trim();
+        if (!targetEmail && userId && userId.includes("@")) {
+          targetEmail = userId.trim();
+        }
+        if (!targetEmail && userId && (userId.startsWith("usr_") || userId.length > 10)) {
+          try {
+            const userRepo = this.activeManager_.getRepository("user");
+            const u = await userRepo.findOne({ where: { id: userId } });
+            if (u && u.email) {
+              targetEmail = u.email;
+            }
+          } catch (_) {}
+        }
+
+        if (targetEmail) {
+          try {
+            this.logger_.info(`[OtpService] Dual-dispatching OTP verification email to ${targetEmail}...`);
+            const emailRes = await this.emailService_.sendOtpEmail(targetEmail, code);
+            if (emailRes.success) {
+              this.logger_.info(`[OtpService] Email OTP delivered to ${targetEmail} (MessageID: ${emailRes.messageId})`);
+            } else {
+              this.logger_.warn(`[OtpService] Email OTP delivery warning: ${emailRes.error}`);
+            }
+          } catch (emErr: any) {
+            this.logger_.warn(`[OtpService] Email OTP dispatch error: ${emErr.message}`);
+          }
         }
       } else {
         // Direct Email OTP via SMTP
