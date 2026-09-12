@@ -29,9 +29,22 @@ class OrderService extends MedusaOrderService {
     }
   }
 
+  getLoggedInUser(): User | null {
+    let user: any = this.loggedInUser_;
+    if (!user && this.container) {
+      try {
+        if (typeof this.container.hasRegistration === "function" && this.container.hasRegistration("loggedInUser")) {
+          user = this.container.resolve("loggedInUser");
+        }
+      } catch (e) {}
+    }
+    return user || null;
+  }
+
   async retrieve(orderId: string, config?: FindConfig<Order>): Promise<Order> {
     config = config || ({} as FindConfig<Order>);
-    if (this.loggedInUser_) {
+    const user = this.getLoggedInUser();
+    if (user) {
       if (config.relations && config.relations.includes("fulfillments")) {
         config.relations.push("store");
       } else {
@@ -45,8 +58,8 @@ class OrderService extends MedusaOrderService {
     // Only set store_id if it's not already present and order.store.id exists
     if (
       (order.store_id === null || order.store_id === undefined) &&
-      this.loggedInUser_ &&
-      this.loggedInUser_.store_id &&
+      user &&
+      user.store_id &&
       order.store &&
       order.store.id
     ) {
@@ -54,20 +67,19 @@ class OrderService extends MedusaOrderService {
     }
 
     if (
-      this.loggedInUser_ &&
-      this.loggedInUser_?.store_id &&
-      (!order.store_id || order.store_id !== this.loggedInUser_.store_id)
+      user &&
+      user.store_id &&
+      (!order.store_id || order.store_id !== user.store_id)
     ) {
-      // Superadmins, admins, and logistics operators can view all orders for fulfillment & delivery
-      const userRole = (this.loggedInUser_.role || "").toLowerCase();
-      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
-      if (userRole === "admin" || accountType.includes("logistics")) {
+      // Superadmins can view all orders
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole === "admin") {
         return order;
       }
 
       // Check if any of the order items belong to the user's store
       const hasStoreProduct = order.items?.some(
-        (item) => item.variant?.product?.store_id === this.loggedInUser_?.store_id
+        (item) => item.variant?.product?.store_id === user.store_id
       );
 
       if (hasStoreProduct) {
@@ -89,11 +101,14 @@ class OrderService extends MedusaOrderService {
     config?: FindConfig<Order>
   ): Promise<Order[]> {
     config = config || ({} as FindConfig<Order>);
-    if (this.loggedInUser_ && this.loggedInUser_.store_id) {
-      const userRole = (this.loggedInUser_.role || "").toLowerCase();
-      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
-      if (userRole !== "admin" && !accountType.includes("logistics")) {
-        selector["store_id"] = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+
+    if (selector["store_id"]) {
+      // Explicitly scoped
+    } else if (user && user.store_id) {
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        selector["store_id"] = user.store_id;
       }
     }
 
@@ -111,11 +126,14 @@ class OrderService extends MedusaOrderService {
     config?: FindConfig<Order>
   ): Promise<[Order[], number]> {
     config = config || ({} as FindConfig<Order>);
-    if (this.loggedInUser_ && this.loggedInUser_.store_id) {
-      const userRole = (this.loggedInUser_.role || "").toLowerCase();
-      const accountType = ((this.loggedInUser_.metadata as any)?.account_type || "").toLowerCase();
-      if (userRole !== "admin" && !accountType.includes("logistics")) {
-        selector["store_id"] = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+
+    if (selector["store_id"]) {
+      // Explicitly scoped
+    } else if (user && user.store_id) {
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        selector["store_id"] = user.store_id;
       }
     }
 

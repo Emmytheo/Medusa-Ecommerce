@@ -16,6 +16,13 @@ function getSupabase() {
   return createClient(url, key);
 }
 
+function getRows(res: any): any[] {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res.rows)) return res.rows;
+  return [];
+}
+
 function getUserIdFromRequest(req: any): string | null {
   let loggedInUser: any;
   try {
@@ -24,6 +31,18 @@ function getUserIdFromRequest(req: any): string | null {
   if (loggedInUser?.id) return loggedInUser.id;
   if (req.user?.id || req.user?.userId) return req.user.id || req.user.userId;
   if (req.session?.user_id) return req.session.user_id;
+
+  if (req.session?.jwt && typeof req.session.jwt === "string") {
+    try {
+      const payloadBase64 = req.session.jwt.split(".")[1];
+      if (payloadBase64) {
+        const payload = JSON.parse(Buffer.from(payloadBase64, "base64").toString("utf-8"));
+        if (payload?.user_id || payload?.userId) {
+          return payload.user_id || payload.userId;
+        }
+      }
+    } catch (_) {}
+  }
 
   const authHeader = req.headers?.authorization;
   if (authHeader && typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
@@ -59,7 +78,8 @@ async function getLogisticsOrgForUser(manager: any, userId: string, userEmail: s
   if (currentOrgId) {
     try {
       const rows = await manager.query('SELECT id, name FROM logistics_orgs WHERE id = $1 LIMIT 1', [currentOrgId]);
-      if (rows && rows.length > 0) return { id: String(rows[0].id), name: rows[0].name };
+      const list = getRows(rows);
+      if (list.length > 0) return { id: String(list[0].id), name: list[0].name };
     } catch (_) {}
   }
   try {
@@ -71,8 +91,9 @@ async function getLogisticsOrgForUser(manager: any, userId: string, userEmail: s
        LIMIT 1`,
       [userId, userEmail]
     );
-    if (rows && rows.length > 0) {
-      return { id: String(rows[0].id), name: rows[0].name };
+    const list = getRows(rows);
+    if (list.length > 0) {
+      return { id: String(list[0].id), name: list[0].name };
     }
   } catch (err) {
     console.error("Error finding logistics org via manager:", err);
@@ -136,34 +157,45 @@ export function attachAdminRoutes(adminRouter: Router) {
     const fulfillmentProviderService = req.scope.resolve("fulfillmentProviderService");
 
     const storeRes = await manager.query("SELECT * FROM store WHERE id = $1", [storeId]);
-    if (!storeRes.rows || storeRes.rows.length === 0) return null;
-    const storeData = storeRes.rows[0];
+    const storeRows = getRows(storeRes);
+    if (storeRows.length === 0) return null;
+    const storeData = storeRows[0];
 
     const curRes = await manager.query(
       `SELECT c.* FROM currency c 
        INNER JOIN store_currencies sc ON sc.currency_code = c.code 
        WHERE sc.store_id = $1`,
       [storeId]
-    ).catch(() => ({ rows: [] }));
+    ).catch(() => []);
+    const curRows = getRows(curRes);
 
-    if (curRes.rows && curRes.rows.length > 0) {
-      storeData.currencies = curRes.rows;
+    if (curRows.length > 0) {
+      storeData.currencies = curRows;
     } else {
       const defCode = storeData.default_currency_code || "ngn";
       const defCur = await manager.query(
         "SELECT * FROM currency WHERE code = $1",
         [defCode]
-      ).catch(() => ({ rows: [] }));
-      storeData.currencies = defCur.rows || [];
+      ).catch(() => []);
+      storeData.currencies = getRows(defCur);
     }
 
     if (storeData.default_sales_channel_id) {
       const scRes = await manager.query(
         "SELECT * FROM sales_channel WHERE id = $1",
         [storeData.default_sales_channel_id]
-      ).catch(() => ({ rows: [] }));
-      if (scRes.rows && scRes.rows.length > 0) {
-        storeData.default_sales_channel = scRes.rows[0];
+      ).catch(() => []);
+      const scRows = getRows(scRes);
+      if (scRows.length > 0) {
+        storeData.default_sales_channel = scRows[0];
+      }
+    }
+
+    if (!storeData.default_sales_channel) {
+      const anySc = await manager.query("SELECT * FROM sales_channel LIMIT 1").catch(() => []);
+      const anyScRows = getRows(anySc);
+      if (anyScRows.length > 0) {
+        storeData.default_sales_channel = anyScRows[0];
       }
     }
 
@@ -207,16 +239,18 @@ export function attachAdminRoutes(adminRouter: Router) {
       const owned = await manager.query(
         "SELECT id FROM store WHERE metadata->>'vendor_user_id' = $1 LIMIT 1",
         [userId]
-      ).catch(() => ({ rows: [] }));
-      if (owned.rows && owned.rows.length > 0) {
-        targetStoreId = owned.rows[0].id;
+      ).catch(() => []);
+      const ownedRows = getRows(owned);
+      if (ownedRows.length > 0) {
+        targetStoreId = ownedRows[0].id;
       }
     }
 
     if (!targetStoreId) {
       const fallback = await manager.query("SELECT id FROM store ORDER BY created_at ASC LIMIT 1");
-      if (fallback.rows && fallback.rows.length > 0) {
-        targetStoreId = fallback.rows[0].id;
+      const fallbackRows = getRows(fallback);
+      if (fallbackRows.length > 0) {
+        targetStoreId = fallbackRows[0].id;
       }
     }
 
@@ -253,16 +287,18 @@ export function attachAdminRoutes(adminRouter: Router) {
       const owned = await manager.query(
         "SELECT id FROM store WHERE metadata->>'vendor_user_id' = $1 LIMIT 1",
         [userId]
-      ).catch(() => ({ rows: [] }));
-      if (owned.rows && owned.rows.length > 0) {
-        targetStoreId = owned.rows[0].id;
+      ).catch(() => []);
+      const ownedRows = getRows(owned);
+      if (ownedRows.length > 0) {
+        targetStoreId = ownedRows[0].id;
       }
     }
 
     if (!targetStoreId) {
       const fallback = await manager.query("SELECT id FROM store ORDER BY created_at ASC LIMIT 1");
-      if (fallback.rows && fallback.rows.length > 0) {
-        targetStoreId = fallback.rows[0].id;
+      const fallbackRows = getRows(fallback);
+      if (fallbackRows.length > 0) {
+        targetStoreId = fallbackRows[0].id;
       }
     }
 

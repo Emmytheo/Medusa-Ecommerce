@@ -21,10 +21,12 @@ type CreateProductInput = {
 class ProductService extends MedusaProductService {
   static LIFE_TIME = Lifetime.SCOPED;
   protected readonly loggedInUser_: User | null;
+  protected readonly container_: any;
 
   constructor(container, options) {
     // @ts-expect-error prefer-rest-params
     super(...arguments);
+    this.container_ = container;
 
     try {
       this.loggedInUser_ = container.loggedInUser;
@@ -33,18 +35,36 @@ class ProductService extends MedusaProductService {
     }
   }
 
+  getLoggedInUser(): User | null {
+    let user: any = this.loggedInUser_;
+    if (!user && this.container_) {
+      try {
+        if (typeof this.container_.hasRegistration === "function" && this.container_.hasRegistration("loggedInUser")) {
+          user = this.container_.resolve("loggedInUser");
+        }
+      } catch (e) {}
+    }
+    return user || null;
+  }
+
   async list(
     selector: ProductSelector,
     config?: FindProductConfig
   ): Promise<Product[]> {
-    if (!selector.store_id && this.loggedInUser_?.store_id) {
-      selector.store_id = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+    if (!selector.store_id && user?.store_id) {
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        selector.store_id = user.store_id;
+      }
     }
 
-    config.select?.push("store_id");
+    config = config || ({} as FindProductConfig);
+    config.select = config.select || [];
+    config.select.push("store_id");
 
-    config.relations?.push("store");
-    // config.relations?.push("variants.calculated_price");
+    config.relations = config.relations || [];
+    config.relations.push("store");
 
     return await super.list(selector, config);
   }
@@ -53,14 +73,16 @@ class ProductService extends MedusaProductService {
     selector: ProductSelector,
     config?: FindProductConfig
   ): Promise<[Product[], number]> {
-    if (!selector.store_id && this.loggedInUser_?.store_id) {
-      selector.store_id = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+    if (!selector.store_id && user?.store_id) {
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        selector.store_id = user.store_id;
+      }
     }
-    config ??= {}; // You can also add an initializer on the argument
+    config ??= {};
     config.relations ??= [];
     config.relations.push("store");
-    // config.relations?.push("variants.calculated_price");
-    // config.relations.push("store_id");
 
     return await super.listAndCount(selector, config);
   }
@@ -69,40 +91,44 @@ class ProductService extends MedusaProductService {
     productId: string,
     config?: FindProductConfig
   ): Promise<Product> {
-    config ??= {}; // You can also add an initializer on the argument
+    config ??= {};
     config.relations ??= [];
     config.relations.push("store");
-    // config.relations.push("store_id");
 
     const product = await super.retrieve(productId, config);
+    const user = this.getLoggedInUser();
 
     if (
       product.store?.id &&
-      this.loggedInUser_?.store_id &&
-      product.store.id !== this.loggedInUser_.store_id
+      user?.store_id &&
+      product.store.id !== user.store_id
     ) {
-      // Throw error if you don't want a product to be accessible to other stores
-      throw new Error("Product does not exist in store.");
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        throw new Error("Product does not exist in store.");
+      }
     }
 
     return product;
   }
 
   async create(productObject: CreateProductInput): Promise<Product> {
-    console.log(productObject, this.loggedInUser_)
-    if (!productObject.store_id && this.loggedInUser_) {
-      productObject.store_id = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+    if (!productObject.store_id && user?.store_id) {
+      productObject.store_id = user.store_id;
     }
     if (!productObject.store_id) {
       throw new Error("Store ID is required to create a product.");
     }
-    if (productObject.store_id !== this.loggedInUser_?.store_id) {
-      throw new Error("You can only create products for your own store.");
+    if (user?.store_id && productObject.store_id !== user.store_id) {
+      const userRole = (user.role || "").toLowerCase();
+      if (userRole !== "admin") {
+        throw new Error("You can only create products for your own store.");
+      }
     }
     if (!productObject.title) {
       throw new Error("Product title is required.");
     }
-    
 
     return await super.create(productObject);
   }

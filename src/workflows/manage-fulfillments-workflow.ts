@@ -41,7 +41,8 @@ type TaskType =
   | "confirm_parent_order";
 type Task = {
   type: TaskType;
-  fulfillment_id: string;
+  fulfillment_id?: string;
+  order_id?: string;
   data?: Record<string, unknown>;
 };
 
@@ -175,11 +176,12 @@ const manageFulfillments = createStep(
           case "create_pickup_request": {
             // expected data: pickup details (address, window, meta...)
             const payload = task.data ?? {};
+            const fulfillmentId = task.fulfillment_id || (task.data?.fulfillment_id as string);
             const { data: inserted, error } = await supabase
               .from("pickup_requests")
               .insert([
                 {
-                  fulfillment_id: task.fulfillment_id,
+                  fulfillment_id: fulfillmentId || null,
                   payload,
                   created_at: new Date().toISOString(),
                 },
@@ -189,16 +191,18 @@ const manageFulfillments = createStep(
 
             if (error) throw error;
 
-            // link to fulfillment record
-            await supabase
-              .from("fulfillments")
-              .update({ pickup_request_id: inserted.id })
-              .eq("id", task.fulfillment_id);
+            // link to fulfillment record if fulfillmentId is present
+            if (fulfillmentId) {
+              await supabase
+                .from("fulfillment")
+                .update({ pickup_request_id: inserted.id })
+                .eq("id", fulfillmentId);
 
-            eventBusService?.emit?.("fulfillment.pickup_request.created", {
-              fulfillment_id: task.fulfillment_id,
-              pickup_request_id: inserted.id,
-            });
+              eventBusService?.emit?.("fulfillment.pickup_request.created", {
+                fulfillment_id: fulfillmentId,
+                pickup_request_id: inserted.id,
+              });
+            }
 
             results.push({ task, success: true, detail: inserted });
             break;

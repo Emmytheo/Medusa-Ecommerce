@@ -25,11 +25,10 @@ class StoreService extends MedusaStoreService {
     let user: any = this.loggedInUser_
     if (!user && this.container_) {
       try {
-        user = this.container_.resolve ? this.container_.resolve("loggedInUser") : null
+        if (typeof this.container_.hasRegistration === "function" && this.container_.hasRegistration("loggedInUser")) {
+          user = this.container_.resolve("loggedInUser")
+        }
       } catch (e) {}
-      if (!user && this.container_.cradle) {
-        user = this.container_.cradle.loggedInUser
-      }
     }
 
     if (user?.store_id) {

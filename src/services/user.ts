@@ -15,10 +15,12 @@ class UserService extends MedusaUserService {
   protected readonly loggedInUser_: User | null;
   protected readonly storeRepository_: typeof StoreRepository;
   protected readonly walletRepository_: typeof WalletRepository;
+  protected readonly container_: any;
 
   constructor(container, options) {
     // @ts-expect-error prefer-rest-params
     super(...arguments);
+    this.container_ = container;
     this.storeRepository_ = container.storeRepository;
     this.walletRepository_ = container.walletRepository;
 
@@ -29,12 +31,25 @@ class UserService extends MedusaUserService {
     }
   }
 
+  getLoggedInUser(): User | null {
+    let user: any = this.loggedInUser_;
+    if (!user && this.container_) {
+      try {
+        if (typeof this.container_.hasRegistration === "function" && this.container_.hasRegistration("loggedInUser")) {
+          user = this.container_.resolve("loggedInUser");
+        }
+      } catch (e) {}
+    }
+    return user || null;
+  }
+
   async list(
     selector: FilterableUserProps & { store_id?: string } = {},
     config: FindConfig<User> = {}
   ): Promise<User[]> {
-    if (!selector.store_id && this.loggedInUser_?.store_id) {
-      selector.store_id = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+    if (!selector.store_id && user?.store_id) {
+      selector.store_id = user.store_id;
     }
     return await super.list(selector, config as any);
   }
@@ -43,15 +58,17 @@ class UserService extends MedusaUserService {
     selector: FilterableUserProps & { store_id?: string } = {},
     config: FindConfig<User> = {}
   ): Promise<[User[], number]> {
-    if (!selector.store_id && this.loggedInUser_?.store_id) {
-      selector.store_id = this.loggedInUser_.store_id;
+    const user = this.getLoggedInUser();
+    if (!selector.store_id && user?.store_id) {
+      selector.store_id = user.store_id;
     }
     return await super.listAndCount(selector, config as any);
   }
 
   async retrieve(userId: string, config: FindConfig<User> = {}): Promise<User> {
     if (userId === "me") {
-      const id = this.loggedInUser_?.id;
+      const user = this.getLoggedInUser();
+      const id = user?.id;
       if (!id) {
         throw new MedusaError(
           MedusaError.Types.NOT_FOUND,

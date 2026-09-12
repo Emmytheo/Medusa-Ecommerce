@@ -47,6 +47,17 @@ export default (rootDirectory: string): Router | Router[] => {
     next();
   });
 
+  // Normalize fulfillments payload: Medusa core expects items: [{ item_id, quantity }]
+  router.use(/\/admin\/orders\/[^\/]+\/fulfillments/, (req, res, next) => {
+    if (req.method === "POST" && req.body && Array.isArray(req.body.items)) {
+      req.body.items = req.body.items.map((it: any) => ({
+        item_id: it.item_id || it.line_item_id || it.id,
+        quantity: it.quantity ?? 1,
+      }));
+    }
+    next();
+  });
+
   // Add authentication to all admin routes *except* auth, onboarding, otp, email, and account invite ones
   router.use(
     /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,
