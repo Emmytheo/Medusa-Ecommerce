@@ -143,18 +143,29 @@ export function attachAdminRoutes(adminRouter: Router) {
 
     const manager = req.scope.resolve("manager");
     let logisticsOrgId: string | null = (currentUser.metadata?.logistics_org_id || "").toString() || null;
+    let orgDetails: any = null;
     if (!logisticsOrgId) {
       const org = await getLogisticsOrgForUser(manager, userId, currentUser.email, currentUser.metadata?.logistics_org_id);
       if (org) {
         logisticsOrgId = org.id;
+        orgDetails = org;
         if (!currentUser.metadata) currentUser.metadata = {};
         currentUser.metadata.logistics_org_id = logisticsOrgId;
         currentUser.metadata.logistics_org_name = org.name;
         await userService.update(userId, { metadata: currentUser.metadata }).catch(() => {});
       }
+    } else {
+      const orgRes = await manager.query('SELECT * FROM "logistics_orgs" WHERE id = $1', [logisticsOrgId]).catch(() => ({ rows: [] }));
+      if (orgRes.rows && orgRes.rows.length > 0) {
+        orgDetails = orgRes.rows[0];
+      }
     }
 
-    const isSuperAdmin = currentUser.role === "admin" && !currentUser.store_id && !logisticsOrgId;
+    const requestedScope = (req.query.scope || req.headers["x-app-scope"] || "").toString().toLowerCase();
+    const requestedStoreId = (req.query.store_id || req.headers["x-store-id"] || "").toString();
+    const requestedLogisticsOrgId = (req.query.logistics_org_id || req.headers["x-logistics-org-id"] || "").toString();
+
+    const isSuperAdmin = currentUser.role === "admin" && !currentUser.store_id && !logisticsOrgId && !requestedScope;
     let users: any[] = [];
     let count = 0;
 
@@ -162,28 +173,54 @@ export function attachAdminRoutes(adminRouter: Router) {
     const limit = parseInt(req.query.limit as string) || 20;
     const userRepo = req.scope.resolve("userRepository");
 
+    const isLogisticsContext = requestedScope === "logistics" || requestedScope === "rider" || (requestedLogisticsOrgId && requestedLogisticsOrgId !== "null") || (!requestedScope && logisticsOrgId && !currentUser.store_id);
+
     if (isSuperAdmin) {
       [users, count] = await userRepo.findAndCount({
         skip: offset,
         take: limit,
       });
-    } else if (logisticsOrgId) {
+    } else if (isLogisticsContext) {
+      const targetOrgId = requestedLogisticsOrgId || logisticsOrgId;
       const allUsers = await userRepo.find();
       const matched = allUsers.filter((u: any) => {
         const uOrgId = (u.metadata?.logistics_org_id || "").toString();
-        return u.id === userId || uOrgId === logisticsOrgId;
+        return uOrgId === targetOrgId;
       });
+
+      // Enrich metadata with verified role in this logistics org
+      matched.forEach((u: any) => {
+        if (!u.metadata) u.metadata = {};
+        const isAdmin = (orgDetails && orgDetails.contact_info?.admin_user_id === u.id) ||
+                        u.metadata.account_type === "logistics_org" ||
+                        u.metadata.logistics_role === "admin" ||
+                        (u.role && u.role.toLowerCase() === "admin");
+        u.metadata.logistics_role = isAdmin ? "admin" : (u.metadata.logistics_role || "staff");
+      });
+
       count = matched.length;
       users = matched.slice(offset, offset + limit);
-    } else if (currentUser.store_id) {
-      [users, count] = await userRepo.findAndCount({
-        where: { store_id: currentUser.store_id },
-        skip: offset,
-        take: limit,
-      });
     } else {
-      users = [currentUser];
-      count = 1;
+      // Vendor Store Context
+      const targetStoreId = requestedStoreId || currentUser.store_id || currentUser.metadata?.store_id;
+      if (targetStoreId) {
+        const allUsers = await userRepo.find();
+        const matched = allUsers.filter((u: any) => {
+          return u.store_id === targetStoreId || u.metadata?.store_id === targetStoreId;
+        });
+
+        matched.forEach((u: any) => {
+          if (!u.metadata) u.metadata = {};
+          const isOwner = u.store_id === targetStoreId && (u.metadata.account_type === "vendor" || !u.metadata.account_type?.includes("staff") || u.role === "admin");
+          u.metadata.vendor_role = isOwner ? "owner" : "staff";
+        });
+
+        count = matched.length;
+        users = matched.slice(offset, offset + limit);
+      } else {
+        users = [currentUser];
+        count = 1;
+      }
     }
 
     users.forEach((u) => {
@@ -211,16 +248,27 @@ export function attachAdminRoutes(adminRouter: Router) {
       if (org) logisticsOrgId = org.id;
     }
 
+    const requestedScope = (req.query.scope || req.headers["x-app-scope"] || "").toString().toLowerCase();
+    const requestedStoreId = (req.query.store_id || req.headers["x-store-id"] || "").toString();
+    const requestedLogisticsOrgId = (req.query.logistics_org_id || req.headers["x-logistics-org-id"] || "").toString();
+
+    const isLogisticsContext = requestedScope === "logistics" || requestedScope === "rider" || (requestedLogisticsOrgId && requestedLogisticsOrgId !== "null");
+
     const allInvites = await inviteService.list({});
     let filtered = allInvites;
 
-    if (currentUser.role !== "admin" || currentUser.store_id || logisticsOrgId) {
+    if (currentUser.role !== "admin" || currentUser.store_id || logisticsOrgId || requestedScope) {
       filtered = allInvites.filter((inv: any) => {
         const invOrgId = (inv.metadata?.logistics_org_id || "").toString();
         const invStoreId = (inv.metadata?.store_id || "").toString();
-        if (logisticsOrgId && invOrgId === logisticsOrgId) return true;
-        if (currentUser.store_id && invStoreId === currentUser.store_id) return true;
-        return false;
+
+        if (isLogisticsContext) {
+          const targetOrgId = requestedLogisticsOrgId || logisticsOrgId;
+          return invOrgId === targetOrgId;
+        } else {
+          const targetStoreId = requestedStoreId || currentUser.store_id;
+          return invStoreId === targetStoreId;
+        }
       });
     }
 
@@ -244,58 +292,98 @@ export function attachAdminRoutes(adminRouter: Router) {
 
     let logisticsOrgId: string | null = (currentUser.metadata?.logistics_org_id || "").toString() || null;
     let logisticsOrgName: string | null = (currentUser.metadata?.logistics_org_name || "").toString() || null;
+    let orgDetails: any = null;
 
     if (!logisticsOrgId) {
       const org = await getLogisticsOrgForUser(manager, userId, currentUser.email, currentUser.metadata?.logistics_org_id);
       if (org) {
         logisticsOrgId = org.id;
         logisticsOrgName = org.name;
+        orgDetails = org;
+      }
+    } else {
+      const orgRes = await manager.query('SELECT * FROM "logistics_orgs" WHERE id = $1', [logisticsOrgId]).catch(() => ({ rows: [] }));
+      if (orgRes.rows && orgRes.rows.length > 0) {
+        orgDetails = orgRes.rows[0];
       }
     }
 
+    const requestedScope = (req.body.scope || req.query.scope || req.headers["x-app-scope"] || "").toString().toLowerCase();
+    const isLogisticsContext = requestedScope === "logistics" || requestedScope === "rider" || (!requestedScope && logisticsOrgId && !currentUser.store_id);
+
     const targetEmail = (req.body.user || req.body.email || "").toString().trim().toLowerCase();
-    const role = req.body.role || "member";
+    const invitedRole = (req.body.role || req.body.logistics_role || "staff").toString().toLowerCase();
 
     if (!targetEmail) {
       res.status(400).json({ type: "invalid_data", message: "Email parameter is required" });
       return;
     }
 
+    // Check permissions!
+    if (isLogisticsContext) {
+      const isOrgAdmin = currentUser.role === "admin" ||
+                         currentUser.metadata?.account_type === "logistics_org" ||
+                         currentUser.metadata?.logistics_role === "admin" ||
+                         (orgDetails && orgDetails.contact_info?.admin_user_id === userId);
+
+      if (!isOrgAdmin) {
+        res.status(403).json({
+          type: "unauthorized",
+          message: "Only organization administrators can invite staff or couriers to this logistics firm."
+        });
+        return;
+      }
+    }
+
     // Check if user with this email already exists
     const existingUser = await userRepo.findOne({ where: { email: targetEmail } });
 
     if (existingUser) {
-      if (logisticsOrgId) {
+      if (isLogisticsContext && logisticsOrgId) {
         const existingOrgId = (existingUser.metadata?.logistics_org_id || "").toString();
         if (existingOrgId === logisticsOrgId) {
           res.status(400).json({
             type: "invalid_data",
-            message: `User ${targetEmail} is already a staff member in ${logisticsOrgName || "your organization"}.`
+            message: `User ${targetEmail} is already a member in ${logisticsOrgName || "your organization"}.`
           });
           return;
         }
 
-        // User exists elsewhere, attach them to this Logistics Org!
+        // Attach user to this Logistics Org WITHOUT clobbering their vendor store identity!
+        const existingScopes = Array.isArray(existingUser.metadata?.allowed_scopes)
+          ? existingUser.metadata.allowed_scopes
+          : ["vendor"];
+        const updatedScopes = Array.from(new Set([...existingScopes, "logistics", "rider"]));
+
         const newMeta = {
           ...(existingUser.metadata || {}),
           logistics_org_id: logisticsOrgId,
           logistics_org_name: logisticsOrgName || "Swift Air",
-          account_type: "logistics_staff"
+          logistics_role: invitedRole === "admin" ? "admin" : (invitedRole === "rider" ? "rider" : "staff"),
+          allowed_scopes: updatedScopes
         };
+
+        // If they already have a store, preserve their account_type as vendor or store owner
+        if (!newMeta.account_type || newMeta.account_type === "logistics_staff") {
+          if (existingUser.store_id) {
+            newMeta.account_type = "vendor";
+          }
+        }
+
         await userRepo.update({ id: existingUser.id }, { metadata: newMeta });
 
         res.status(200).json({
           invite: {
             id: `inv_attached_${Date.now()}`,
             user_email: targetEmail,
-            role: role,
+            role: invitedRole,
             accepted: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             metadata: {
               logistics_org_id: logisticsOrgId,
-              account_type: "logistics_staff",
-              note: "Existing user added to organization staff"
+              logistics_role: newMeta.logistics_role,
+              note: "Existing user attached to logistics fleet"
             }
           }
         });
@@ -313,7 +401,7 @@ export function attachAdminRoutes(adminRouter: Router) {
           invite: {
             id: `inv_attached_${Date.now()}`,
             user_email: targetEmail,
-            role: role,
+            role: invitedRole,
             accepted: true,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -329,12 +417,13 @@ export function attachAdminRoutes(adminRouter: Router) {
 
     // Create standard invite for new user
     try {
-      const invite = await inviteService.create(targetEmail, role);
+      const invite = await inviteService.create(targetEmail, invitedRole);
       const inviteMeta = {
         ...(invite.metadata || {}),
-        logistics_org_id: logisticsOrgId || undefined,
-        store_id: currentUser.store_id || undefined,
-        account_type: logisticsOrgId ? "logistics_staff" : "vendor_staff"
+        logistics_org_id: isLogisticsContext ? (logisticsOrgId || undefined) : undefined,
+        logistics_role: isLogisticsContext ? (invitedRole === "admin" ? "admin" : "staff") : undefined,
+        store_id: !isLogisticsContext ? (currentUser.store_id || undefined) : undefined,
+        account_type: isLogisticsContext ? "logistics_staff" : "vendor_staff"
       };
       await inviteRepo.update({ id: invite.id }, { metadata: inviteMeta });
       invite.metadata = inviteMeta;
