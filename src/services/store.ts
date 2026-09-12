@@ -7,11 +7,13 @@ import {
 class StoreService extends MedusaStoreService {
   static LIFE_TIME = Lifetime.SCOPED
   protected readonly loggedInUser_: User | null
+  protected readonly container_: any
 
   constructor(container, options) {
     // @ts-expect-error prefer-rest-params
     super(...arguments)
 
+    this.container_ = container
     try {
       this.loggedInUser_ = container.loggedInUser
     } catch (e) {
@@ -20,14 +22,24 @@ class StoreService extends MedusaStoreService {
   }
 
   async retrieve(config?: FindConfig<Store>): Promise<Store> {
-    if (!this.loggedInUser_) {
-      return super.retrieve(config);
+    let user: any = this.loggedInUser_
+    if (!user && this.container_) {
+      try {
+        user = this.container_.resolve ? this.container_.resolve("loggedInUser") : null
+      } catch (e) {}
+      if (!user && this.container_.cradle) {
+        user = this.container_.cradle.loggedInUser
+      }
     }
 
-    return this.retrieveForLoggedInUser(config);
+    if (user?.store_id) {
+      return this.retrieveForUser(user.store_id, config)
+    }
+
+    return super.retrieve(config);
   }
 
-  async retrieveForLoggedInUser (config?: FindConfig<Store>) {
+  async retrieveForUser(storeId: string, config?: FindConfig<Store>) {
     const storeRepo = this.manager_.withRepository(this.storeRepository_);
     const store = await storeRepo.findOne({
         ...config,
@@ -36,15 +48,22 @@ class StoreService extends MedusaStoreService {
           'members'
         ],
         where: {
-          id: this.loggedInUser_.store_id
+          id: storeId
         },
     });
 
     if (!store) {
-        throw new Error('Unable to find the user store');
+        return super.retrieve(config);
     }
 
     return store
+  }
+
+  async retrieveForLoggedInUser (config?: FindConfig<Store>) {
+    if (this.loggedInUser_?.store_id) {
+      return this.retrieveForUser(this.loggedInUser_.store_id, config);
+    }
+    return super.retrieve(config);
   }
 }
 

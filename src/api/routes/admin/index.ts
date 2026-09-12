@@ -129,6 +129,223 @@ export function attachAdminRoutes(adminRouter: Router) {
     next();
   });
 
+  // Helper to fetch store data for a given store ID
+  const fetchStoreDetails = async (manager: any, storeId: string, req: any) => {
+    const featureFlagRouter = req.scope.resolve("featureFlagRouter");
+    const paymentProviderService = req.scope.resolve("paymentProviderService");
+    const fulfillmentProviderService = req.scope.resolve("fulfillmentProviderService");
+
+    const storeRes = await manager.query("SELECT * FROM store WHERE id = $1", [storeId]);
+    if (!storeRes.rows || storeRes.rows.length === 0) return null;
+    const storeData = storeRes.rows[0];
+
+    const curRes = await manager.query(
+      `SELECT c.* FROM currency c 
+       INNER JOIN store_currencies sc ON sc.currency_code = c.code 
+       WHERE sc.store_id = $1`,
+      [storeId]
+    ).catch(() => ({ rows: [] }));
+
+    if (curRes.rows && curRes.rows.length > 0) {
+      storeData.currencies = curRes.rows;
+    } else {
+      const defCode = storeData.default_currency_code || "ngn";
+      const defCur = await manager.query(
+        "SELECT * FROM currency WHERE code = $1",
+        [defCode]
+      ).catch(() => ({ rows: [] }));
+      storeData.currencies = defCur.rows || [];
+    }
+
+    if (storeData.default_sales_channel_id) {
+      const scRes = await manager.query(
+        "SELECT * FROM sales_channel WHERE id = $1",
+        [storeData.default_sales_channel_id]
+      ).catch(() => ({ rows: [] }));
+      if (scRes.rows && scRes.rows.length > 0) {
+        storeData.default_sales_channel = scRes.rows[0];
+      }
+    }
+
+    storeData.feature_flags = featureFlagRouter && featureFlagRouter.listFlags ? featureFlagRouter.listFlags() : {};
+    storeData.modules = [];
+    try {
+      storeData.payment_providers = await paymentProviderService.list();
+    } catch (_) {
+      storeData.payment_providers = [];
+    }
+    try {
+      storeData.fulfillment_providers = await fulfillmentProviderService.list();
+    } catch (_) {
+      storeData.fulfillment_providers = [];
+    }
+
+    return storeData;
+  };
+
+  // Scoped store endpoint: returns the store of the logged in user
+  adminRouter.get("/store", wrapHandler(async (req, res) => {
+    const userId = getUserIdFromRequest(req);
+    const userService = req.scope.resolve("userService");
+    const manager = req.scope.resolve("manager");
+
+    let targetStoreId: string | null = null;
+    if (userId) {
+      try {
+        const currentUser = await userService.retrieve(userId, { relations: ["store"] });
+        targetStoreId = currentUser.store_id || (currentUser.metadata as any)?.store_id;
+      } catch (e) {}
+    }
+
+    if (req.query.store_id && typeof req.query.store_id === "string") {
+      targetStoreId = req.query.store_id;
+    } else if (req.headers["x-store-id"] && typeof req.headers["x-store-id"] === "string") {
+      targetStoreId = req.headers["x-store-id"] as string;
+    }
+
+    if (!targetStoreId && userId) {
+      const owned = await manager.query(
+        "SELECT id FROM store WHERE metadata->>'vendor_user_id' = $1 LIMIT 1",
+        [userId]
+      ).catch(() => ({ rows: [] }));
+      if (owned.rows && owned.rows.length > 0) {
+        targetStoreId = owned.rows[0].id;
+      }
+    }
+
+    if (!targetStoreId) {
+      const fallback = await manager.query("SELECT id FROM store ORDER BY created_at ASC LIMIT 1");
+      if (fallback.rows && fallback.rows.length > 0) {
+        targetStoreId = fallback.rows[0].id;
+      }
+    }
+
+    const storeData = await fetchStoreDetails(manager, targetStoreId, req);
+    if (!storeData) {
+      res.status(404).json({ message: "Store not found" });
+      return;
+    }
+
+    res.status(200).json({ store: storeData });
+  }));
+
+  // Plural stores endpoint for V2 compatibility
+  adminRouter.get("/stores", wrapHandler(async (req, res) => {
+    const userId = getUserIdFromRequest(req);
+    const userService = req.scope.resolve("userService");
+    const manager = req.scope.resolve("manager");
+
+    let targetStoreId: string | null = null;
+    if (userId) {
+      try {
+        const currentUser = await userService.retrieve(userId, { relations: ["store"] });
+        targetStoreId = currentUser.store_id || (currentUser.metadata as any)?.store_id;
+      } catch (e) {}
+    }
+
+    if (req.query.store_id && typeof req.query.store_id === "string") {
+      targetStoreId = req.query.store_id;
+    } else if (req.headers["x-store-id"] && typeof req.headers["x-store-id"] === "string") {
+      targetStoreId = req.headers["x-store-id"] as string;
+    }
+
+    if (!targetStoreId && userId) {
+      const owned = await manager.query(
+        "SELECT id FROM store WHERE metadata->>'vendor_user_id' = $1 LIMIT 1",
+        [userId]
+      ).catch(() => ({ rows: [] }));
+      if (owned.rows && owned.rows.length > 0) {
+        targetStoreId = owned.rows[0].id;
+      }
+    }
+
+    if (!targetStoreId) {
+      const fallback = await manager.query("SELECT id FROM store ORDER BY created_at ASC LIMIT 1");
+      if (fallback.rows && fallback.rows.length > 0) {
+        targetStoreId = fallback.rows[0].id;
+      }
+    }
+
+    const storeData = await fetchStoreDetails(manager, targetStoreId, req);
+    if (!storeData) {
+      res.status(200).json({ stores: [], count: 0, limit: 10, offset: 0 });
+      return;
+    }
+
+    res.status(200).json({
+      stores: [storeData],
+      count: 1,
+      limit: 10,
+      offset: 0,
+    });
+  }));
+
+  // Scoped store update: updates the store of the logged in user
+  adminRouter.post("/store", wrapHandler(async (req, res) => {
+    const userId = getUserIdFromRequest(req);
+    const userService = req.scope.resolve("userService");
+    const manager = req.scope.resolve("manager");
+
+    let targetStoreId: string | null = null;
+    if (userId) {
+      try {
+        const currentUser = await userService.retrieve(userId);
+        targetStoreId = currentUser.store_id || (currentUser.metadata as any)?.store_id;
+      } catch (e) {}
+    }
+
+    if (req.query.store_id && typeof req.query.store_id === "string") {
+      targetStoreId = req.query.store_id;
+    } else if (req.headers["x-store-id"] && typeof req.headers["x-store-id"] === "string") {
+      targetStoreId = req.headers["x-store-id"] as string;
+    }
+
+    if (!targetStoreId) {
+      res.status(400).json({ message: "Store not found for user" });
+      return;
+    }
+
+    const { name, default_currency_code, currencies, metadata } = req.body;
+    const updates: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(name);
+    }
+    if (default_currency_code !== undefined) {
+      updates.push(`default_currency_code = $${idx++}`);
+      values.push(default_currency_code.toLowerCase());
+    }
+    if (metadata !== undefined) {
+      updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${idx++}::jsonb`);
+      values.push(JSON.stringify(metadata));
+    }
+
+    if (updates.length > 0) {
+      updates.push(`updated_at = NOW()`);
+      values.push(targetStoreId);
+      await manager.query(
+        `UPDATE store SET ${updates.join(", ")} WHERE id = $${idx}`,
+        values
+      );
+    }
+
+    if (Array.isArray(currencies)) {
+      await manager.query("DELETE FROM store_currencies WHERE store_id = $1", [targetStoreId]);
+      for (const code of currencies) {
+        await manager.query(
+          "INSERT INTO store_currencies (store_id, currency_code) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+          [targetStoreId, code.toLowerCase()]
+        ).catch(() => {});
+      }
+    }
+
+    const updatedStore = await fetchStoreDetails(manager, targetStoreId, req);
+    res.status(200).json({ store: updatedStore });
+  }));
+
   // Scoped team/users endpoint: returns team members belonging to vendor store OR logistics org
   adminRouter.get("/users", wrapHandler(async (req, res) => {
     const userService = req.scope.resolve("userService");
