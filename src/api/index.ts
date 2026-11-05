@@ -58,6 +58,15 @@ export default (rootDirectory: string): Router | Router[] => {
     next();
   });
 
+  // Strip store_id from /admin/orders query parameters so Medusa core's class-validator does not reject the request
+  router.use(/\/admin\/orders/, (req, res, next) => {
+    if (req.query && req.query.store_id) {
+      (req as any).store_id = req.query.store_id;
+      delete req.query.store_id;
+    }
+    next();
+  });
+
   // Add authentication to all admin routes *except* auth, onboarding, otp, email, and account invite ones
   router.use(
     /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,

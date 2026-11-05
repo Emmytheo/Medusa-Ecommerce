@@ -39,8 +39,9 @@ export class AwsSnsService extends TransactionBaseService {
   }
 
   /**
-   * Dispatches SMS using AWS End User Messaging SMS (Pinpoint SMS Voice v2) as primary,
-   * falling back automatically to legacy AWS SNS Publish if needed.
+   * Dual-dispatches SMS via both AWS SNS Legacy Publish (2010-03-31) AND
+   * AWS End User Messaging SMS (Pinpoint SMS Voice v2) concurrently.
+   * Ensures delivery regardless of telco routing fluctuations.
    */
   async sendSms(
     phoneNumber: string,
@@ -57,35 +58,64 @@ export class AwsSnsService extends TransactionBaseService {
     }
 
     const formattedPhone = this.normalizePhoneNumber(phoneNumber);
-    const activeSenderId = (senderId || process.env.AWS_SNS_SENDER_ID || "AFRIOMARKET").trim();
+    const activeSenderId = (senderId || process.env.AWS_SNS_SENDER_ID || "afriomarket").trim();
 
-    // 1. Primary: AWS End User Messaging SMS (Pinpoint SMS Voice v2)
-    const voiceRes = await this.sendViaEndUserMessaging(
-      accessKey,
-      secretKey,
-      region,
-      formattedPhone,
-      message,
-      activeSenderId
+    this.logger_.info(
+      `[AwsSnsService] Dual-dispatching SMS to ${formattedPhone} via both AWS Legacy SNS & Pinpoint v2...`
     );
 
-    if (voiceRes.success) {
-      return voiceRes;
+    // Concurrently trigger both legacy SNS and End User Messaging v2
+    const [legacyResult, v2Result] = await Promise.allSettled([
+      this.sendViaLegacySns(
+        accessKey,
+        secretKey,
+        region,
+        formattedPhone,
+        message,
+        activeSenderId
+      ),
+      this.sendViaEndUserMessaging(
+        accessKey,
+        secretKey,
+        region,
+        formattedPhone,
+        message,
+        activeSenderId
+      ),
+    ]);
+
+    const legacyVal = legacyResult.status === "fulfilled" ? legacyResult.value : null;
+    const v2Val = v2Result.status === "fulfilled" ? v2Result.value : null;
+
+    const legacySuccess = Boolean(legacyVal?.success);
+    const v2Success = Boolean(v2Val?.success);
+
+    if (legacySuccess || v2Success) {
+      const successfulIds: string[] = [];
+      if (legacyVal?.messageId) successfulIds.push(`legacy:${legacyVal.messageId}`);
+      if (v2Val?.messageId) successfulIds.push(`v2:${v2Val.messageId}`);
+
+      this.logger_.info(
+        `[AwsSnsService] SMS dual-dispatch successful for ${formattedPhone}. Results: [Legacy: ${legacySuccess ? "OK" : legacyVal?.error || "failed"}, V2: ${v2Success ? "OK" : v2Val?.error || "failed"}]. MsgIDs: ${successfulIds.join(", ")}`
+      );
+
+      return {
+        success: true,
+        messageId: legacyVal?.messageId || v2Val?.messageId,
+      };
     }
 
-    this.logger_.warn(
-      `[AwsSnsService] AWS End User Messaging attempt notice (${voiceRes.error}). Attempting fallback to legacy SNS Publish...`
+    const legacyErr = legacyVal?.error || (legacyResult.status === "rejected" ? legacyResult.reason?.message : "failed");
+    const v2Err = v2Val?.error || (v2Result.status === "rejected" ? v2Result.reason?.message : "failed");
+
+    this.logger_.error(
+      `[AwsSnsService] Both AWS SMS dispatches failed for ${formattedPhone}. Legacy: ${legacyErr} | V2: ${v2Err}`
     );
 
-    // 2. Fallback: Legacy AWS SNS Publish
-    return await this.sendViaLegacySns(
-      accessKey,
-      secretKey,
-      region,
-      formattedPhone,
-      message,
-      activeSenderId
-    );
+    return {
+      success: false,
+      error: `AWS SNS Dual Dispatch Failed (Legacy: ${legacyErr} | V2: ${v2Err})`,
+    };
   }
 
   /**

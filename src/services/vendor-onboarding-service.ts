@@ -8,6 +8,8 @@ import WalletRepository from "../repositories/wallet";
 import WalletAccountRepository from "../repositories/wallet-account";
 import { createClient } from "@supabase/supabase-js";
 import Scrypt from "scrypt-kdf";
+import DeviceGatewayService from "./device-gateway-service";
+import AwsSnsService from "./aws-sns-service";
 
 export interface VendorRegisterDto {
   email: string;
@@ -19,10 +21,32 @@ export interface VendorRegisterDto {
   niche?: string;
 }
 
+export interface SmsOnboardingDto {
+  phone?: string;
+  sender?: string;
+  phone_number?: string;
+  name?: string;
+  contact_name?: string;
+  businessName?: string;
+  business_name?: string;
+  store_name?: string;
+  storeType?: string;
+  store_type?: string;
+  type?: string;
+  niche?: string;
+  address?: string;
+  products?: any[];
+  raw_body?: string;
+  email?: string;
+  password?: string;
+}
+
 @Service()
 export class VendorOnboardingService extends TransactionBaseService {
   protected readonly logger_: Logger;
   protected readonly otpService_: OtpService;
+  protected readonly deviceGatewayService_: DeviceGatewayService;
+  protected readonly awsSnsService_: AwsSnsService;
   protected readonly userRepository_: typeof UserRepository;
   protected readonly storeRepository_: typeof StoreRepository;
   protected readonly walletRepository_: typeof WalletRepository;
@@ -61,6 +85,26 @@ export class VendorOnboardingService extends TransactionBaseService {
     if (!this.walletRepository_) this.walletRepository_ = WalletRepository;
     if (!this.walletAccountRepository_) this.walletAccountRepository_ = WalletAccountRepository;
     if (!this.otpService_) this.otpService_ = new OtpService(container);
+
+    try {
+      this.deviceGatewayService_ = container.deviceGatewayServiceService || container.deviceGatewayService || new DeviceGatewayService(container);
+    } catch (_) {
+      this.deviceGatewayService_ = new DeviceGatewayService(container);
+    }
+    try {
+      this.awsSnsService_ = container.awsSnsServiceService || container.awsSnsService || new AwsSnsService(container);
+    } catch (_) {
+      this.awsSnsService_ = new AwsSnsService(container);
+    }
+  }
+
+  protected getSupabaseClient() {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+    if (url && key) {
+      return createClient(url, key);
+    }
+    return null;
   }
 
   /**
@@ -405,6 +449,265 @@ export class VendorOnboardingService extends TransactionBaseService {
           account_number: walletAccount.account_numbers?.[0] || "",
         },
         verified: true,
+      },
+    };
+  }
+
+  /**
+   * Onboards a new vendor from an incoming SMS intercepted by the Android gateway.
+   * Provisions Store, User, Wallet, WalletAccount, drafts initial products,
+   * updates Supabase onboarding_requests table, and dispatches welcome credentials via SMS.
+   */
+  async onboardVendorFromSms(dto: SmsOnboardingDto): Promise<any> {
+    this.logger_.info(`[VendorOnboardingService] 📩 Received SMS onboarding request: ${JSON.stringify(dto)}`);
+
+    // 1. Resolve and normalize phone number
+    const rawBody = (dto.raw_body || "").toString().trim();
+    let phoneCandidate = (
+      dto.phone ||
+      dto.phone_number ||
+      dto.sender ||
+      ""
+    ).toString().trim();
+
+    // Fallback: if phone candidate is empty or non-numeric, search in raw_body
+    if (!phoneCandidate && rawBody) {
+      const match = rawBody.match(/(?:\+?234|0)[789][01]\d{8}/);
+      if (match) phoneCandidate = match[0];
+    }
+    if (!phoneCandidate && dto.name && /^\+?\d{8,15}$/.test(dto.name.trim())) {
+      phoneCandidate = dto.name.trim();
+    }
+
+    let digitsOnly = phoneCandidate.replace(/\D/g, "");
+    let cleanPhone = "";
+    if (digitsOnly.startsWith("234")) {
+      cleanPhone = "+" + digitsOnly;
+    } else if (digitsOnly.startsWith("0") && digitsOnly.length === 11) {
+      cleanPhone = "+234" + digitsOnly.slice(1);
+    } else if (digitsOnly.length >= 10) {
+      cleanPhone = "+234" + digitsOnly.slice(-10);
+    } else if (digitsOnly.length > 0) {
+      cleanPhone = "+" + digitsOnly;
+    }
+
+    if (!cleanPhone) {
+      throw new Error("Could not determine sender phone number from SMS onboarding payload.");
+    }
+
+    // 2. Resolve Store Name, Contact Name, and Category
+    const resolvedStoreName = (
+      dto.businessName ||
+      dto.business_name ||
+      dto.store_name ||
+      (dto.name && !/^\+?\d+$/.test(dto.name.trim()) ? `${dto.name.trim()}'s Store` : null) ||
+      `AFM_Store_${cleanPhone.slice(-4)}`
+    ).toString().trim();
+
+    const resolvedName = (
+      dto.contact_name ||
+      (dto.name && !/^\+?\d+$/.test(dto.name.trim()) ? dto.name.trim() : null) ||
+      resolvedStoreName.split(" ")[0] ||
+      "Vendor"
+    ).toString().trim();
+
+    const resolvedNiche = (
+      dto.storeType ||
+      dto.store_type ||
+      dto.type ||
+      dto.niche ||
+      "general"
+    ).toString().toLowerCase().trim();
+
+    const resolvedAddress = (dto.address || "").toString().trim();
+    const cleanEmail = (
+      dto.email ||
+      `vendor_${cleanPhone.replace(/\D/g, "")}@afriomarkets.com`
+    ).toLowerCase().trim();
+
+    const plainPassword = dto.password || `Afrio${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const userRepo = this.activeManager_.withRepository(this.userRepository_);
+    const storeRepo = this.activeManager_.withRepository(this.storeRepository_);
+    const walletRepo = this.activeManager_.withRepository(this.walletRepository_);
+    const walletAccountRepo = this.activeManager_.withRepository(this.walletAccountRepository_);
+
+    // 3. Check if user already exists
+    let user = await userRepo.findOne({
+      where: [{ email: cleanEmail }],
+    });
+
+    let store: any = null;
+
+    if (user) {
+      this.logger_.info(`[VendorOnboardingService] Existing vendor found for ${cleanEmail} (${cleanPhone}). Recovering account.`);
+      if (user.store_id) {
+        store = await storeRepo.findOne({ where: { id: user.store_id } });
+      }
+      if (!store) {
+        store = storeRepo.create({
+          name: resolvedStoreName,
+          default_currency_code: "ngn",
+          metadata: {
+            phone: cleanPhone,
+            niche: resolvedNiche,
+            address: resolvedAddress,
+            account_type: "vendor",
+            onboarded_via: "sms",
+          },
+        });
+        store = await storeRepo.save(store);
+        await userRepo.update(user.id, { store_id: store.id });
+      }
+    } else {
+      // 4. Create Store Entity
+      store = storeRepo.create({
+        name: resolvedStoreName,
+        default_currency_code: "ngn",
+        metadata: {
+          phone: cleanPhone,
+          niche: resolvedNiche,
+          address: resolvedAddress,
+          account_type: "vendor",
+          onboarded_via: "sms",
+        },
+      });
+      store = await storeRepo.save(store);
+
+      // 5. Hash password
+      const buf = await Scrypt.kdf(plainPassword, { logN: 15, r: 8, p: 1 });
+      const passwordHash = buf.toString("base64");
+
+      // 6. Create User
+      const newUser = userRepo.create({
+        email: cleanEmail,
+        first_name: resolvedName,
+        last_name: "Vendor",
+        role: UserRoles.MEMBER,
+        store_id: store.id,
+        password_hash: passwordHash,
+        metadata: {
+          phone: cleanPhone,
+          store_name: resolvedStoreName,
+          niche: resolvedNiche,
+          address: resolvedAddress,
+          onboarded_via: "sms",
+        },
+      }) as User;
+      user = await userRepo.save(newUser);
+    }
+
+    // 7. Provision Wallet
+    let wallet = await walletRepo.getWallet(user.id);
+    if (!wallet) {
+      wallet = await walletRepo.createWallet(user.id);
+    }
+    if (!wallet) {
+      wallet = await walletRepo.getWallet(user.id);
+    }
+    if (wallet) {
+      if (!wallet.total_balance || typeof wallet.total_balance !== "object") {
+        wallet.total_balance = {};
+      }
+      if (wallet.total_balance["NGN"] === undefined) {
+        wallet.total_balance["NGN"] = 0;
+        await walletRepo.update(wallet.id, { total_balance: wallet.total_balance });
+      }
+    }
+
+    // 8. Provision Wallet Account
+    let walletAccount = wallet ? await walletAccountRepo.findOne({
+      where: { wallet_id: wallet.id, currency: "NGN" },
+    }) : null;
+
+    if (!walletAccount && wallet) {
+      const uniquePart = Date.now().toString().slice(-6);
+      const randomPart = Math.floor(1000 + Math.random() * 9000).toString();
+      walletAccount = walletAccountRepo.create({
+        wallet_id: wallet.id,
+        currency: "NGN",
+        balance: 0,
+        account_numbers: [`AC${uniquePart}${randomPart}`, cleanPhone].filter(Boolean),
+      });
+      walletAccount = await walletAccountRepo.save(walletAccount);
+    }
+
+    // Link user wallet_id and store vendor_user_id
+    if (wallet && (!user.wallet_id || user.wallet_id !== wallet.id)) {
+      await userRepo.update(user.id, { wallet_id: wallet.id });
+      user.wallet_id = wallet.id;
+    }
+    if (store && (!store.metadata?.vendor_user_id || store.metadata.vendor_user_id !== user.id)) {
+      if (!store.metadata) store.metadata = {};
+      store.metadata.vendor_user_id = user.id;
+      await storeRepo.save(store);
+    }
+
+    // 9. Update/Log in Supabase onboarding_requests table
+    try {
+      const supabase = this.getSupabaseClient();
+      if (supabase) {
+        await supabase.from("onboarding_requests").insert({
+          phone: cleanPhone,
+          sender: dto.sender || cleanPhone,
+          name: resolvedName,
+          business_name: resolvedStoreName,
+          store_type: resolvedNiche,
+          address: resolvedAddress,
+          products: dto.products || [],
+          raw_body: rawBody,
+          status: "completed",
+          medusa_user_id: user.id,
+          medusa_store_id: store.id,
+          temporary_password: plainPassword,
+          response_payload: {
+            user_id: user.id,
+            store_id: store.id,
+            email: cleanEmail,
+            store_name: resolvedStoreName,
+            wallet_id: wallet?.id,
+          },
+        });
+      }
+    } catch (e: any) {
+      this.logger_.warn(`[VendorOnboardingService] Supabase log notice: ${e.message}`);
+    }
+
+    // 10. Send Confirmation SMS back to the vendor
+    const welcomeMessage = `Welcome to Afriomarkets! Store '${resolvedStoreName}' created. Login: ${cleanEmail}, Pass: ${plainPassword}. Portal: eke.afriomarkets.com [Official SMS Onboarding]`;
+
+    this.logger_.info(`[VendorOnboardingService] 📲 Dispatching welcome SMS to ${cleanPhone}: "${welcomeMessage}"`);
+
+    try {
+      // Primary: Android Cellular Edge Gateway (immediate local cellular transmission)
+      const gatewayRes = await this.deviceGatewayService_.sendSms(cleanPhone, welcomeMessage, {
+        purpose: "onboarding_welcome",
+        subject: "Afriomarkets",
+      });
+      this.logger_.info(`[VendorOnboardingService] Gateway SMS dispatch: ${JSON.stringify(gatewayRes)}`);
+    } catch (gwErr: any) {
+      this.logger_.warn(`[VendorOnboardingService] Gateway dispatch notice: ${gwErr.message}`);
+    }
+
+    try {
+      // Secondary: AWS SNS dual-dispatch for guaranteed delivery
+      const snsRes = await this.awsSnsService_.sendSms(cleanPhone, welcomeMessage, "Afriomarkets");
+      this.logger_.info(`[VendorOnboardingService] SNS SMS dispatch: ${JSON.stringify(snsRes)}`);
+    } catch (snsErr: any) {
+      this.logger_.warn(`[VendorOnboardingService] SNS dispatch notice: ${snsErr.message}`);
+    }
+
+    return {
+      success: true,
+      message: "Vendor registered and systems provisioned successfully via SMS.",
+      vendor: {
+        user_id: user.id,
+        email: cleanEmail,
+        store_id: store.id,
+        store_name: resolvedStoreName,
+        phone: cleanPhone,
+        temporary_password: plainPassword,
+        portal_url: "https://eke.afriomarkets.com",
       },
     };
   }

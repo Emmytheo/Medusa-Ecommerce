@@ -64,6 +64,13 @@ class StoreService extends MedusaStoreService {
     }
     return super.retrieve(config);
   }
+
+  async update(data: any): Promise<Store> {
+    if (!data.default_sales_channel_id) {
+      data.default_sales_channel_id = "sc_01HHMEQR8YTK2DZ7PCR6DES1R4";
+    }
+    return super.update(data);
+  }
 }
 
 export default StoreService

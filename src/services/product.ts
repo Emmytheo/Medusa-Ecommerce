@@ -130,6 +130,19 @@ class ProductService extends MedusaProductService {
       throw new Error("Product title is required.");
     }
 
+    // Ensure storefront sales channel is always included so vendor products appear live online
+    const defaultStorefrontSalesChannelId = "sc_01HHMEQR8YTK2DZ7PCR6DES1R4";
+    const existingChannels = (productObject as any).sales_channels || [];
+    const hasStorefrontChannel = existingChannels.some(
+      (sc: any) => sc.id === defaultStorefrontSalesChannelId
+    );
+    if (!hasStorefrontChannel) {
+      (productObject as any).sales_channels = [
+        ...existingChannels,
+        { id: defaultStorefrontSalesChannelId },
+      ];
+    }
+
     return await super.create(productObject);
   }
 }

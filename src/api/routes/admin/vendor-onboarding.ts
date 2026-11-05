@@ -66,9 +66,9 @@ export default function vendorOnboardingRoutes(adminRouter: Router) {
     const container: MedusaContainer = req.scope;
     const onboardingService = getOnboardingService(container);
 
-    // Accept both 'code' (Flutter client) and 'otp_code' (legacy) field names
-    const { phone, email, otp_code, code } = req.body;
-    const otpValue = (otp_code || code || "").toString().trim();
+    // Accept 'code' (Flutter client), 'otpCode' (camelCase), and 'otp_code' (legacy) field names
+    const { phone, email, otp_code, code, otpCode } = req.body;
+    const otpValue = (otp_code || code || otpCode || "").toString().trim();
     const target = (phone || email || "").toString().trim();
 
     if (!target || !otpValue) {
@@ -128,6 +128,35 @@ export default function vendorOnboardingRoutes(adminRouter: Router) {
         niche,
       });
 
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
+   * POST /admin/vendor/onboarding/sms-onboard
+   * Handles incoming SMS onboarding requests from Android Gateway / Supabase Edge Function / Webhook.
+   */
+  router.post("/sms-onboard", async (req: MedusaRequest, res: MedusaResponse) => {
+    const container: MedusaContainer = req.scope;
+    const onboardingService = getOnboardingService(container);
+
+    try {
+      const result = await onboardingService.onboardVendorFromSms(req.body);
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  });
+
+  // Alias for generic webhook routing
+  router.post("/webhook", async (req: MedusaRequest, res: MedusaResponse) => {
+    const container: MedusaContainer = req.scope;
+    const onboardingService = getOnboardingService(container);
+
+    try {
+      const result = await onboardingService.onboardVendorFromSms(req.body);
       res.status(200).json(result);
     } catch (error: any) {
       res.status(400).json({ success: false, message: error.message });
