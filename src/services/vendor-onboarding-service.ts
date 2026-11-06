@@ -162,6 +162,89 @@ export class VendorOnboardingService extends TransactionBaseService {
   }
 
   /**
+   * Pre-provisions a confirmed Supabase Auth user bypassing confirmation email delivery failures.
+   */
+  async provisionAuthUser(dto: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    accountType?: string;
+    storeName?: string;
+    niche?: string;
+  }): Promise<{ success: boolean; user?: any; message?: string }> {
+    const cleanEmail = dto.email.trim().toLowerCase();
+    const cleanPhone = dto.phone ? dto.phone.trim() : "";
+    const supabase = this.getSupabaseClient();
+
+    if (!supabase) {
+      throw new Error("Supabase service client is not configured.");
+    }
+
+    try {
+      const { data: listData } = await supabase.auth.admin.listUsers();
+      const existing = listData?.users?.find(
+        (u: any) => u.email?.toLowerCase() === cleanEmail
+      );
+
+      if (existing) {
+        const { error: updateErr } = await supabase.auth.admin.updateUserById(
+          existing.id,
+          {
+            email_confirm: true,
+            password: dto.password,
+            user_metadata: {
+              first_name: dto.firstName?.trim() || existing.user_metadata?.first_name || "",
+              last_name: dto.lastName?.trim() || existing.user_metadata?.last_name || "",
+              full_name: `${dto.firstName?.trim() || ""} ${dto.lastName?.trim() || ""}`.trim(),
+              phone: cleanPhone || existing.user_metadata?.phone || "",
+              account_type: dto.accountType || existing.user_metadata?.account_type || "vendor",
+              store_name: dto.storeName?.trim() || existing.user_metadata?.store_name || "",
+              niche: dto.niche || existing.user_metadata?.niche || "",
+              email_verified: true,
+            },
+          }
+        );
+        if (updateErr) throw updateErr;
+
+        return {
+          success: true,
+          user: { id: existing.id, email: existing.email },
+          message: "Existing user credentials updated and auto-confirmed.",
+        };
+      }
+
+      const { data, error } = await supabase.auth.admin.createUser({
+        email: cleanEmail,
+        password: dto.password,
+        email_confirm: true,
+        user_metadata: {
+          first_name: dto.firstName?.trim() || "",
+          last_name: dto.lastName?.trim() || "",
+          full_name: `${dto.firstName?.trim() || ""} ${dto.lastName?.trim() || ""}`.trim(),
+          phone: cleanPhone,
+          account_type: dto.accountType || "vendor",
+          store_name: dto.storeName?.trim() || "",
+          niche: dto.niche || "",
+          email_verified: true,
+        },
+      });
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        user: { id: data.user.id, email: data.user.email },
+        message: "User provisioned and pre-confirmed successfully.",
+      };
+    } catch (err: any) {
+      this.logger_.error(`[VendorOnboardingService] provisionAuthUser error: ${err.message}`);
+      throw err;
+    }
+  }
+
+  /**
    * Generates and dispatches a vendor onboarding OTP.
    */
   async sendOnboardingOtp(phoneOrEmail: string): Promise<any> {
@@ -423,6 +506,20 @@ export class VendorOnboardingService extends TransactionBaseService {
       );
     } catch (e: any) {
       this.logger_.warn(`[VendorOnboardingService] Final OTP lock notice: ${e.message}`);
+    }
+
+    // 11. Ensure pre-confirmed Supabase Auth user exists for seamless portal login
+    try {
+      await this.provisionAuthUser({
+        email: cleanEmail,
+        password: dto.password || "AfrioVendor@123",
+        phone: cleanPhone,
+        storeName: dto.storeName,
+        accountType: dto.accountType || "vendor",
+        niche: dto.niche,
+      });
+    } catch (sbErr: any) {
+      this.logger_.warn(`[VendorOnboardingService] Supabase Auth sync notice: ${sbErr.message}`);
     }
 
     this.logger_.info(

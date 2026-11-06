@@ -89,6 +89,49 @@ export default function vendorOnboardingRoutes(adminRouter: Router) {
   });
 
   /**
+   * POST /admin/vendor/onboarding/provision-auth
+   * Pre-provisions a confirmed Supabase Auth account to bypass SMTP delivery limitations.
+   */
+  router.post("/provision-auth", async (req: MedusaRequest, res: MedusaResponse) => {
+    const container: MedusaContainer = req.scope;
+    const onboardingService = getOnboardingService(container);
+
+    const {
+      email, password,
+      firstName, first_name,
+      lastName, last_name,
+      phone,
+      accountType, account_type,
+      storeName, store_name,
+      niche,
+    } = req.body;
+
+    const resolvedEmail = (email || "").toString().trim();
+    const resolvedPassword = (password || "").toString();
+
+    if (!resolvedEmail || !resolvedPassword) {
+      res.status(400).json({ success: false, message: "Email and password are required." });
+      return;
+    }
+
+    try {
+      const result = await onboardingService.provisionAuthUser({
+        email: resolvedEmail,
+        password: resolvedPassword,
+        firstName: firstName || first_name,
+        lastName: lastName || last_name,
+        phone,
+        accountType: accountType || account_type,
+        storeName: storeName || store_name,
+        niche,
+      });
+      res.status(200).json(result);
+    } catch (error: any) {
+      res.status(400).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
    * POST /admin/vendor/onboarding/register
    * Completes vendor account, store, and initial wallet setup without needing superadmin credentials.
    */
