@@ -149,14 +149,10 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
     }
 
     // Check if parent order already has child orders
-    const childOrders = await orderRepository.find({
-      where: {
-      metadata: {
-        parent: input.id,
-        type: "childOrder"
-      }
-      }
-    });
+    const childOrders = await orderRepository
+      .createQueryBuilder("ord")
+      .where("ord.metadata ->> 'parent' = :parentId", { parentId: input.id })
+      .getMany();
     const childOrdersExist = childOrders && childOrders.length > 0;
 
     if (childOrdersExist) {
@@ -290,26 +286,45 @@ const splitOrder = createStep("splitOrder", async (input: WorkflowInput, context
 
       const store = await getStore(store_id);
 
-      const walletAccount = await createWalletAccount(
-        user.id,
-        store.default_currency_code
-      );
-
       new_order = await orderService.retrieve(new_order.id, {
         select: ["total"],
         relations: ["cart"],
       });
 
-      // Fix: Medusa uses smallest unit (e.g. cents), but Wallet expects main unit (e.g. dollars)
-      const amountMajor = new_order.total / 100;
+      if (user && user.id && store) {
+        try {
+          const currencyCode =
+            store.default_currency_code ||
+            order.currency_code ||
+            "ngn";
 
-      await recordAndCreditTransaction(
-        user.id,
-        walletAccount,
-        amountMajor,
-        store.default_currency_code,
-        { order_id: new_order.id }
-      );
+          const walletAccount = await createWalletAccount(
+            user.id,
+            currencyCode
+          );
+
+          // Fix: Medusa uses smallest unit (e.g. cents/kobo), but Wallet expects main unit
+          const amountMajor = (new_order.total || 0) / 100;
+
+          if (walletAccount) {
+            await recordAndCreditTransaction(
+              user.id,
+              walletAccount,
+              amountMajor,
+              currencyCode,
+              { order_id: new_order.id }
+            );
+          }
+        } catch (walletErr) {
+          logger.warn(
+            `Wallet credit skipped/failed for child order ${new_order.id} (store ${store_id}): ${walletErr}`
+          );
+        }
+      } else {
+        logger.warn(
+          `No linked user or store found for store_id ${store_id}; skipping wallet credit for child order ${new_order.id}`
+        );
+      }
     }
 
     return new StepResponse(

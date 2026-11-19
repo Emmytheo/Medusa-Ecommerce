@@ -1,9 +1,10 @@
 import { Router } from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
+import crypto from "crypto";
 import { authenticate, ConfigModule } from "@medusajs/medusa";
 import { getConfigFile } from "medusa-core-utils";
-import { registerLoggedInUser } from "./middlewares/logged-in-user"; // Import your old middleware
+import { registerLoggedInUser } from "./middlewares/logged-in-user";
 import { attachStoreRoutes } from "./routes/store";
 import { attachAdminRoutes } from "./routes/admin";
 
@@ -15,14 +16,44 @@ export default (rootDirectory: string): Router | Router[] => {
   );
   const { projectConfig } = configModule;
 
-  // Set up our CORS options objects, based on config
+  const isAllowedOrigin = (origin: string | undefined, configuredList: string) => {
+    if (!origin) return true;
+    const configured = (configuredList || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (configured.includes(origin)) return true;
+    if (
+      /^https?:\/\/localhost(:\d+)?$/i.test(origin) ||
+      /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin) ||
+      /^https:\/\/([a-z0-9-]+\.)*afriomarkets\.com$/i.test(origin) ||
+      /^https:\/\/([a-z0-9-]+\.)*vercel\.app$/i.test(origin)
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  // Set up our CORS options objects, based on config + dynamic Afriomarkets/Vercel domains
   const storeCorsOptions = {
-    origin: projectConfig.store_cors.split(","),
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (isAllowedOrigin(origin, projectConfig.store_cors)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   };
 
   const adminCorsOptions = {
-    origin: projectConfig.admin_cors.split(","),
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (isAllowedOrigin(origin, projectConfig.admin_cors)) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   };
 
@@ -32,6 +63,213 @@ export default (rootDirectory: string): Router | Router[] => {
   // Set up root routes for store and admin endpoints, with appropriate CORS settings
   router.use("/store", cors(storeCorsOptions), bodyParser.json());
   router.use("/admin", cors(adminCorsOptions), bodyParser.json());
+
+  // Pre-handler middleware to harden Paystack webhooks (/paystack/hooks, /store/paystack/hooks, /hooks/paystack)
+  const paystackWebhookPreHandler = async (req: any, res: any, next: any) => {
+    if (req.method !== "POST") return next();
+    try {
+      const secret = process.env.PS_KEY || process.env.PAYSTACK_SECRET_KEY || "";
+      if (!secret) {
+        console.error("Paystack Webhook Error: No PS_KEY configured");
+        return next();
+      }
+
+      const signature = req.headers["x-paystack-signature"];
+      if (!signature || !req.body) {
+        return next();
+      }
+
+      const computedHash = crypto
+        .createHmac("sha512", secret)
+        .update(JSON.stringify(req.body))
+        .digest("hex");
+
+      if (computedHash !== signature) {
+        return res.status(400).send("Invalid signature");
+      }
+
+      const event = req.body.event;
+      const data = req.body.data || {};
+      req.body.data = data;
+
+      // Ensure data.metadata is always a non-null object so medusa-payment-paystack never crashes on data.metadata.cart_id
+      if (!data.metadata || typeof data.metadata !== "object") {
+        if (typeof data.metadata === "string") {
+          try {
+            data.metadata = JSON.parse(data.metadata);
+          } catch {
+            data.metadata = {};
+          }
+        } else {
+          data.metadata = {};
+        }
+      }
+
+      // Check custom_fields fallback for cart_id
+      if (!data.metadata.cart_id && Array.isArray(data.metadata.custom_fields)) {
+        const cf = data.metadata.custom_fields.find(
+          (f: any) => f?.variable_name === "cart_id" || f?.display_name === "cart_id"
+        );
+        if (cf?.value) {
+          data.metadata.cart_id = cf.value;
+        }
+      }
+
+      const manager = req.scope?.resolve ? req.scope.resolve("manager") : null;
+
+      // Fallback: if cart_id is still missing on charge.success, look it up in payment_session by paystackTxRef
+      if (event === "charge.success" && !data.metadata.cart_id && data.reference && manager) {
+        try {
+          const rows = await manager.query(
+            `SELECT cart_id FROM payment_session WHERE provider_id = 'paystack' AND (data->>'paystackTxRef' = $1 OR data->'paystackTxAuthData'->>'reference' = $1) ORDER BY created_at DESC LIMIT 1`,
+            [String(data.reference)]
+          );
+          if (rows && rows.length > 0 && rows[0].cart_id) {
+            data.metadata.cart_id = rows[0].cart_id;
+            console.info(
+              `Paystack Webhook: Resolved cart_id ${rows[0].cart_id} from payment_session for reference ${data.reference}`
+            );
+          }
+        } catch (lookupErr) {
+          console.warn("Paystack Webhook: Failed to lookup cart_id by reference:", lookupErr);
+        }
+      }
+
+      // Handle Paystack Transfer Webhooks for Vendor Payouts (transfer.success / transfer.failed / transfer.reversed)
+      if (
+        manager &&
+        (event === "transfer.success" ||
+          event === "transfer.failed" ||
+          event === "transfer.reversed")
+      ) {
+        const newStatus = event === "transfer.success" ? "completed" : "failed";
+        const ref = data.reference ? String(data.reference) : null;
+        const transferCode = data.transfer_code ? String(data.transfer_code) : null;
+        if (ref || transferCode) {
+          try {
+            await manager.query(
+              `UPDATE vendor_payout SET status = $1, updated_at = NOW() WHERE (reference = $2 OR transfer_code = $3) AND status = 'processing'`,
+              [newStatus, ref || "", transferCode || ""]
+            );
+            console.info(
+              `Paystack Webhook: Updated vendor_payout (${ref || transferCode}) to status=${newStatus}`
+            );
+          } catch (payoutErr) {
+            console.warn("Paystack Webhook: Error updating vendor_payout status:", payoutErr);
+          }
+        }
+      }
+
+      // Safety net: if charge.success has a cart_id, schedule a fallback check after 7s in case delayed eventBus doesn't complete the cart
+      if (event === "charge.success" && data.metadata?.cart_id && req.scope) {
+        const cartId = data.metadata.cart_id;
+        const scope = req.scope;
+        setTimeout(async () => {
+          try {
+            const orderService = scope.resolve("orderService");
+            const existingOrder = await orderService
+              .retrieveByCartId(cartId)
+              .catch(() => null);
+            if (existingOrder) return;
+
+            const dbManager = scope.resolve("manager");
+            const completionStrategy = scope.resolve("cartCompletionStrategy");
+            const cartService = scope.resolve("cartService");
+            const idempotencyKeyService = scope.resolve("idempotencyKeyService");
+
+            await dbManager.transaction(async (txManager: any) => {
+              let idempotencyKey = await idempotencyKeyService
+                .withTransaction(txManager)
+                .retrieve({ idempotency_key: cartId })
+                .catch(() => null);
+              if (!idempotencyKey) {
+                idempotencyKey = await idempotencyKeyService
+                  .withTransaction(txManager)
+                  .create({ idempotency_key: cartId });
+              }
+              const cart = await cartService
+                .withTransaction(txManager)
+                .retrieve(cartId, { select: ["context"] });
+              await completionStrategy
+                .withTransaction(txManager)
+                .complete(cartId, idempotencyKey, { ip: cart?.context?.ip });
+            });
+            console.info(`Paystack Webhook Fallback: Completed cart ${cartId}`);
+          } catch (fallbackErr) {
+            // Order was likely already completed by the primary subscriber
+          }
+        }, 7000);
+      }
+    } catch (err) {
+      console.error("Paystack Webhook PreHandler Error:", err);
+    }
+    return next();
+  };
+
+  router.post("/paystack/hooks", bodyParser.json(), paystackWebhookPreHandler);
+
+  // Alias /store/paystack/hooks and /hooks/paystack to /paystack/hooks for convenience
+  router.post("/store/paystack/hooks", bodyParser.json(), (req, res, next) => {
+    req.url = "/paystack/hooks";
+    (router as any).handle(req, res, next);
+  });
+  router.post("/hooks/paystack", bodyParser.json(), (req, res, next) => {
+    req.url = "/paystack/hooks";
+    (router as any).handle(req, res, next);
+  });
+
+  // Live Paystack Transaction Verification Endpoint (/store/paystack/verify?reference=...)
+  const handlePaystackVerify = async (req: any, res: any) => {
+    try {
+      const reference =
+        req.query?.reference ||
+        req.query?.trxref ||
+        req.body?.reference ||
+        req.body?.trxref;
+      if (!reference) {
+        return res.status(400).json({
+          status: false,
+          message: "Transaction reference is required",
+        });
+      }
+
+      const secret = process.env.PS_KEY || process.env.PAYSTACK_SECRET_KEY || "";
+      if (!secret) {
+        return res.status(500).json({
+          status: false,
+          message: "Paystack secret key is not configured on the server",
+        });
+      }
+
+      const response = await fetch(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(String(reference))}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${secret}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const result: any = await response.json();
+
+      return res.status(response.ok ? 200 : 400).json({
+        status: Boolean(result?.status),
+        verified: result?.data?.status === "success",
+        message: result?.message || "Verification completed",
+        data: result?.data || null,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        status: false,
+        verified: false,
+        message: err?.message || "Failed to verify Paystack transaction",
+      });
+    }
+  };
+
+  router.get("/store/paystack/verify", cors(storeCorsOptions), handlePaystackVerify);
+  router.post("/store/paystack/verify", cors(storeCorsOptions), bodyParser.json(), handlePaystackVerify);
 
   // Normalize invites payload: Medusa V1 expects { user: email, role: 'member' }
   router.use("/admin/invites", (req, res, next) => {
@@ -71,7 +309,7 @@ export default (rootDirectory: string): Router | Router[] => {
   router.use(
     /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,
     authenticate(),
-    registerLoggedInUser // Include your old middleware
+    registerLoggedInUser
   );
 
   // Set up routers for store and admin endpoints

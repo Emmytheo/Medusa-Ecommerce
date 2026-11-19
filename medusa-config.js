@@ -24,10 +24,13 @@ try {
 
 // CORS when consuming Medusa from admin
 const ADMIN_CORS =
-  process.env.ADMIN_CORS || "http://localhost:7000,http://localhost:7001";
+  process.env.ADMIN_CORS ||
+  "http://localhost:7000,http://localhost:7001,http://localhost:5173,http://localhost:5174,http://localhost:5175,https://afriomarkets.com,https://www.afriomarkets.com,https://vendor.afriomarkets.com,https://admin.afriomarkets.com,https://eke.afriomarkets.com";
 
 // CORS to avoid issues when consuming Medusa from a client
-const STORE_CORS = process.env.STORE_CORS || "http://localhost:8000,http://localhost:8005";
+const STORE_CORS =
+  process.env.STORE_CORS ||
+  "http://localhost:8000,http://localhost:8005,http://localhost:5173,http://localhost:5174,http://localhost:5175,https://afriomarkets.com,https://www.afriomarkets.com,https://store.afriomarkets.com,https://afriomarkets-store.vercel.app";
 
 const DATABASE_URL =
   process.env.DATABASE_URL || "postgres://localhost/medusa-store";
@@ -46,7 +49,8 @@ const plugins = [
     resolve: `medusa-payment-paystack`,
     /** @type {import("medusa-payment-paystack").PluginOptions} */
     options: {
-      secret_key: process.env.PS_KEY,
+      secret_key: process.env.PS_KEY || process.env.PAYSTACK_SECRET_KEY,
+      debug: true,
     },
   },
   {
