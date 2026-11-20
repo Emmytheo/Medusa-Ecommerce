@@ -81,10 +81,44 @@ class ProductService extends MedusaProductService {
       }
     }
     config ??= {};
+    if (Array.isArray(config.select) && config.select.length > 0 && !config.select.includes("store_id" as any)) {
+      config.select.push("store_id" as any);
+    }
     config.relations ??= [];
-    config.relations.push("store");
+    if (!config.relations.includes("store")) {
+      config.relations.push("store");
+    }
 
     return await super.listAndCount(selector, config);
+  }
+
+  private hasPositiveInlinePrices(variants?: any[]): boolean {
+    if (!Array.isArray(variants) || variants.length === 0) return false;
+    return variants.some(
+      (v) =>
+        Array.isArray(v?.prices) &&
+        v.prices.some((p: any) => Number(p?.amount) > 0)
+    );
+  }
+
+  private async hasPositivePersistedPrices(productId: string): Promise<boolean> {
+    try {
+      const manager = this.activeManager_;
+      if (!manager) return false;
+      const rows = await manager.query(
+        `SELECT COUNT(*)::int AS cnt
+         FROM product_variant pv
+         JOIN product_variant_money_amount pvma ON pvma.variant_id = pv.id AND pvma.deleted_at IS NULL
+         JOIN money_amount ma ON ma.id = pvma.money_amount_id AND ma.deleted_at IS NULL
+         WHERE pv.product_id = $1
+           AND pv.deleted_at IS NULL
+           AND ma.amount > 0`,
+        [productId]
+      );
+      return Number(rows?.[0]?.cnt || 0) > 0;
+    } catch (_) {
+      return false;
+    }
   }
 
   async retrieve(
@@ -130,6 +164,14 @@ class ProductService extends MedusaProductService {
       throw new Error("Product title is required.");
     }
 
+    // Enforce pricing before publish: any product created without at least one positive variant price is saved as draft
+    if (
+      String((productObject as any).status || "").toLowerCase() === "published" &&
+      !this.hasPositiveInlinePrices((productObject as any).variants)
+    ) {
+      (productObject as any).status = "draft";
+    }
+
     // Ensure storefront sales channel is always included so vendor products appear live online
     const defaultStorefrontSalesChannelId = "sc_01HHMEQR8YTK2DZ7PCR6DES1R4";
     const existingChannels = (productObject as any).sales_channels || [];
@@ -144,6 +186,19 @@ class ProductService extends MedusaProductService {
     }
 
     return await super.create(productObject);
+  }
+
+  async update(productId: string, update: any): Promise<Product> {
+    if (String(update?.status || "").toLowerCase() === "published") {
+      const hasInline = this.hasPositiveInlinePrices(update?.variants);
+      if (!hasInline) {
+        const hasPersisted = await this.hasPositivePersistedPrices(productId);
+        if (!hasPersisted) {
+          update.status = "draft";
+        }
+      }
+    }
+    return await super.update(productId, update);
   }
 }
 
