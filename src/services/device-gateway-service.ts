@@ -224,8 +224,9 @@ function setupOnboardingChannel(logger: any): void {
               `[DeviceGatewayService] Realtime sync: intercepted new onboarding request ${row.id} for ${row.phone || row.sender}`
             );
             try {
+              const localPort = process.env.PORT || 9001;
               await fetch(
-                "http://localhost:9000/admin/vendor/onboarding/sms-onboard",
+                `http://127.0.0.1:${localPort}/admin/vendor/onboarding/sms-onboard`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },

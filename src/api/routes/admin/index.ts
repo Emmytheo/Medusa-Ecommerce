@@ -9,6 +9,8 @@ import vendorWalletRoutes from "./vendor-wallet";
 import vendorOnboardingRoutes from "./vendor-onboarding";
 import attachNotificationRoutes from "./notification-routes";
 import { createClient } from "@supabase/supabase-js";
+import CustomManualFulfillmentService, { invalidateShippingRulesCache } from "../../../services/custom-fufillment-manual";
+import crypto from "crypto";
 
 function getSupabase() {
   const url = process.env.SUPABASE_URL || "https://eke.afriomarkets.com";
@@ -263,18 +265,40 @@ export function attachAdminRoutes(adminRouter: Router) {
     res.status(200).json({ store: storeData });
   }));
 
-  // Plural stores endpoint for V2 compatibility
+  // Plural stores endpoint for V2 compatibility (and full directory when Super Admin requests ?all=true)
   adminRouter.get("/stores", wrapHandler(async (req, res) => {
     const userId = getUserIdFromRequest(req);
     const userService = req.scope.resolve("userService");
     const manager = req.scope.resolve("manager");
 
+    let currentUser: any = null;
     let targetStoreId: string | null = null;
     if (userId) {
       try {
-        const currentUser = await userService.retrieve(userId, { relations: ["store"] });
+        currentUser = await userService.retrieve(userId, { relations: ["store"] });
         targetStoreId = currentUser.store_id || (currentUser.metadata as any)?.store_id;
       } catch (e) {}
+    }
+
+    const wantAll = String(req.query.all || "").toLowerCase() === "true";
+    const isSuperAdmin = currentUser?.role === "admin" && !currentUser?.store_id;
+
+    if (wantAll && isSuperAdmin) {
+      const limit = Math.min(200, parseInt(req.query.limit as string) || 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const allStoresRes = await manager.query(
+        `SELECT s.*,
+          (SELECT COUNT(*)::int FROM product p WHERE p.store_id = s.id AND p.deleted_at IS NULL) AS product_count
+         FROM store s
+         ORDER BY s.created_at DESC
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      );
+      const countRes = await manager.query(`SELECT COUNT(*)::int AS total FROM store`);
+      const rows = getRows(allStoresRes);
+      const total = getRows(countRes)[0]?.total || rows.length;
+      res.status(200).json({ stores: rows, count: total, limit, offset });
+      return;
     }
 
     if (req.query.store_id && typeof req.query.store_id === "string") {
@@ -728,6 +752,220 @@ export function attachAdminRoutes(adminRouter: Router) {
       delete updated.password_hash;
     }
     res.status(200).json({ user: updated });
+  }));
+
+  // ── Dynamic Shipping Rate Rules & Settings Endpoints ──────────────────────
+  adminRouter.get("/shipping-rules", wrapHandler(async (req, res) => {
+    const manager = req.scope.resolve("manager");
+    const logisticsOrgId = (req.query.logistics_org_id || "").toString().trim() || null;
+
+    const settingsRows = getRows(
+      await manager.query(`SELECT * FROM public.shipping_settings WHERE id = 'default' LIMIT 1`).catch(() => [])
+    );
+    const rulesRows = getRows(
+      logisticsOrgId
+        ? await manager.query(
+            `SELECT * FROM public.shipping_rate_rules WHERE logistics_org_id IS NULL OR logistics_org_id::text = $1 ORDER BY origin_state ASC`,
+            [logisticsOrgId]
+          ).catch(() => [])
+        : await manager.query(
+            `SELECT * FROM public.shipping_rate_rules ORDER BY logistics_org_id NULLS FIRST, origin_state ASC`
+          ).catch(() => [])
+    );
+    const fxRows = getRows(
+      await manager.query(`SELECT id, currency_code, average_rate, calculated_at FROM public.exchange_rate ORDER BY currency_code ASC`).catch(() => [])
+    );
+    const optionsRows = getRows(
+      await manager.query(
+        `SELECT so.*, r.name AS region_name, r.currency_code AS region_currency
+         FROM shipping_option so
+         LEFT JOIN region r ON r.id = so.region_id
+         WHERE so.deleted_at IS NULL
+         ORDER BY r.name ASC, so.is_return ASC, so.name ASC`
+      ).catch(() => [])
+    );
+
+    res.status(200).json({
+      settings: settingsRows[0] || null,
+      rules: rulesRows,
+      exchange_rates: fxRows,
+      shipping_options: optionsRows,
+    });
+  }));
+
+  adminRouter.put("/shipping-rules", wrapHandler(async (req, res) => {
+    const manager = req.scope.resolve("manager");
+    const body = req.body || {};
+
+    const fields: Array<[string, any]> = [];
+    const numericCols = [
+      "default_weight_kg",
+      "same_city_base_ngn",
+      "same_city_per_kg_ngn",
+      "default_intra_state_ngn",
+      "default_inter_state_ngn",
+      "default_weight_per_kg_ngn",
+      "international_base_ngn",
+      "international_per_kg_ngn",
+      "free_shipping_threshold_ngn",
+      "handling_fee_ngn",
+    ];
+    for (const col of numericCols) {
+      if (body[col] !== undefined && body[col] !== null && !Number.isNaN(Number(body[col]))) {
+        fields.push([col, Number(body[col])]);
+      }
+    }
+    if (body.speed_multipliers && typeof body.speed_multipliers === "object") {
+      fields.push(["speed_multipliers", JSON.stringify(body.speed_multipliers)]);
+    }
+    if (body.international_zones && typeof body.international_zones === "object") {
+      fields.push(["international_zones", JSON.stringify(body.international_zones)]);
+    }
+
+    if (fields.length > 0) {
+      const sets = fields.map(([col], i) => {
+        const cast = col === "speed_multipliers" || col === "international_zones" ? "::jsonb" : "";
+        return `${col} = $${i + 1}${cast}`;
+      });
+      sets.push(`updated_at = NOW()`);
+      const vals = fields.map(([, v]) => v);
+      await manager.query(
+        `UPDATE public.shipping_settings SET ${sets.join(", ")} WHERE id = 'default'`,
+        vals
+      );
+    }
+
+    invalidateShippingRulesCache();
+    const updated = getRows(
+      await manager.query(`SELECT * FROM public.shipping_settings WHERE id = 'default' LIMIT 1`)
+    );
+    res.status(200).json({ success: true, settings: updated[0] || null });
+  }));
+
+  adminRouter.put("/shipping-rules/state", wrapHandler(async (req, res) => {
+    const manager = req.scope.resolve("manager");
+    const {
+      id,
+      origin_state,
+      logistics_org_id = null,
+      base_fare_ngn,
+      weight_cost_per_kg_ngn,
+      state_fares,
+      active = true,
+    } = req.body || {};
+
+    if (!origin_state || !String(origin_state).trim()) {
+      res.status(400).json({ message: "origin_state is required" });
+      return;
+    }
+
+    const svc = new CustomManualFulfillmentService(req.scope.cradle, {});
+    const normalizedState = svc.normalizeStateName(String(origin_state));
+    const orgId = logistics_org_id ? String(logistics_org_id).trim() : null;
+    const baseFare = Number(base_fare_ngn ?? 2500);
+    const weightCost = Number(weight_cost_per_kg_ngn ?? 60);
+    const faresJson = JSON.stringify(state_fares && typeof state_fares === "object" ? state_fares : {});
+
+    let existingId = id || null;
+    if (!existingId) {
+      const ex = getRows(
+        orgId
+          ? await manager.query(
+              `SELECT id FROM public.shipping_rate_rules WHERE origin_state = $1 AND logistics_org_id::text = $2 LIMIT 1`,
+              [normalizedState, orgId]
+            )
+          : await manager.query(
+              `SELECT id FROM public.shipping_rate_rules WHERE origin_state = $1 AND logistics_org_id IS NULL LIMIT 1`,
+              [normalizedState]
+            )
+      );
+      if (ex.length > 0) existingId = ex[0].id;
+    }
+
+    let saved: any = null;
+    if (existingId) {
+      const upd = getRows(
+        await manager.query(
+          `UPDATE public.shipping_rate_rules
+           SET origin_state = $1, base_fare_ngn = $2, weight_cost_per_kg_ngn = $3,
+               state_fares = $4::jsonb, active = $5, updated_at = NOW()
+           WHERE id = $6
+           RETURNING *`,
+          [normalizedState, baseFare, weightCost, faresJson, Boolean(active), existingId]
+        )
+      );
+      saved = upd[0] || null;
+    } else {
+      const ins = getRows(
+        await manager.query(
+          `INSERT INTO public.shipping_rate_rules (origin_state, logistics_org_id, base_fare_ngn, weight_cost_per_kg_ngn, state_fares, active)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+           RETURNING *`,
+          [normalizedState, orgId, baseFare, weightCost, faresJson, Boolean(active)]
+        )
+      );
+      saved = ins[0] || null;
+    }
+
+    invalidateShippingRulesCache();
+    res.status(200).json({ success: true, rule: saved });
+  }));
+
+  adminRouter.delete("/shipping-rules/state/:id", wrapHandler(async (req, res) => {
+    const manager = req.scope.resolve("manager");
+    await manager.query(`DELETE FROM public.shipping_rate_rules WHERE id = $1`, [req.params.id]);
+    invalidateShippingRulesCache();
+    res.status(200).json({ success: true, id: req.params.id });
+  }));
+
+  // ── Live Exchange Rates Sync Endpoint ─────────────────────────────────────
+  adminRouter.post("/exchange-rates/sync", wrapHandler(async (req, res) => {
+    const manager = req.scope.resolve("manager");
+    const fxRes = await fetch("https://open.er-api.com/v6/latest/USD");
+    if (!fxRes.ok) {
+      res.status(502).json({ success: false, message: "Upstream FX provider unavailable" });
+      return;
+    }
+    const fxData: any = await fxRes.json();
+    const rates = fxData?.rates || {};
+    const codes = [
+      "USD","EUR","GBP","CAD","NGN","GHS","KES","ZAR","EGP","MAD",
+      "XOF","XAF","TZS","UGX","RWF","ETB","BWP","ZMW","NAD","MUR",
+      "DZD","TND","AOA","MZN","SLL","LRD","GMD","CVE","SCR","MWK"
+    ];
+
+    let updated = 0;
+    for (const code of codes) {
+      const val = Number(rates[code]);
+      if (val > 0) {
+        const ex = getRows(
+          await manager.query(`SELECT id FROM public.exchange_rate WHERE UPPER(currency_code) = $1 LIMIT 1`, [code])
+        );
+        if (ex.length > 0) {
+          await manager.query(
+            `UPDATE public.exchange_rate SET average_rate = $1, calculated_at = NOW() WHERE id = $2`,
+            [val, ex[0].id]
+          );
+        } else {
+          await manager.query(
+            `INSERT INTO public.exchange_rate (id, currency_code, average_rate, calculated_at) VALUES ($1, $2, $3, NOW())`,
+            [crypto.randomUUID(), code, val]
+          );
+        }
+        updated++;
+      }
+    }
+
+    invalidateShippingRulesCache();
+    const allFx = getRows(
+      await manager.query(`SELECT id, currency_code, average_rate, calculated_at FROM public.exchange_rate ORDER BY currency_code ASC`)
+    );
+    res.status(200).json({
+      success: true,
+      updated_count: updated,
+      provider: "open.er-api.com",
+      rates: allFx,
+    });
   }));
 
   // Attach routes for onboarding experience, defined separately

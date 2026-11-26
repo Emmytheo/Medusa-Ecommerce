@@ -4,9 +4,10 @@ import bodyParser from "body-parser";
 import crypto from "crypto";
 import { authenticate, ConfigModule } from "@medusajs/medusa";
 import { getConfigFile } from "medusa-core-utils";
-import { registerLoggedInUser } from "./middlewares/logged-in-user";
+import { authenticateAdminOrSupabase, registerLoggedInUser } from "./middlewares/logged-in-user";
 import { attachStoreRoutes } from "./routes/store";
 import { attachAdminRoutes } from "./routes/admin";
+import CustomManualFulfillmentService from "../services/custom-fufillment-manual";
 
 export default (rootDirectory: string): Router | Router[] => {
   // Ensure Medusa's store & admin product endpoints always return store_id for authentic stall attribution
@@ -824,11 +825,288 @@ export default (rootDirectory: string): Router | Router[] => {
     next();
   });
 
-  // Add authentication to all admin routes *except* auth, onboarding, otp, email, and account invite ones
+  // ── Health Probes & Dynamic Store Shipping Estimate ───────────────────────
+  router.get("/store/ping", cors(storeCorsOptions), (_req, res) => {
+    res.status(200).json({ status: "ok", service: "afriomarkets-medusa", timestamp: new Date().toISOString() });
+  });
+
+  router.get("/admin/ping", cors(adminCorsOptions), (_req, res) => {
+    res.status(200).json({ status: "ok", message: "pong", timestamp: new Date().toISOString() });
+  });
+
+  router.options("/store/shipping/estimate", cors(storeCorsOptions));
+  router.post(
+    "/store/shipping/estimate",
+    cors(storeCorsOptions),
+    bodyParser.json(),
+    async (req: any, res: any) => {
+      try {
+        let fulfillmentSvc: CustomManualFulfillmentService;
+        try {
+          fulfillmentSvc = req.scope.resolve("customManualFulfillmentService");
+        } catch (_) {
+          fulfillmentSvc = new CustomManualFulfillmentService(req.scope.cradle, {});
+        }
+
+        let cart: any = null;
+        if (req.body?.cart_id) {
+          try {
+            const cartService = req.scope.resolve("cartService");
+            cart = await cartService.retrieveWithTotals(req.body.cart_id, {
+              relations: [
+                "items",
+                "items.variant",
+                "items.variant.product",
+                "shipping_address",
+                "region",
+              ],
+            });
+          } catch (_) {
+            try {
+              const cartService = req.scope.resolve("cartService");
+              cart = await cartService.retrieve(req.body.cart_id, {
+                relations: [
+                  "items",
+                  "items.variant",
+                  "items.variant.product",
+                  "shipping_address",
+                  "region",
+                ],
+              });
+            } catch (__) {}
+          }
+        }
+
+        const estimate = await fulfillmentSvc.estimateShipping({
+          cart,
+          origin_state: req.body?.origin_state,
+          origin_country: req.body?.origin_country,
+          origin_city: req.body?.origin_city,
+          destination_state: req.body?.destination_state || req.body?.province,
+          destination_country: req.body?.destination_country || req.body?.country_code,
+          destination_city: req.body?.destination_city || req.body?.city,
+          weight_kg: req.body?.weight_kg !== undefined ? Number(req.body.weight_kg) : undefined,
+          currency_code: req.body?.currency_code,
+          subtotal_minor: req.body?.subtotal_minor !== undefined ? Number(req.body.subtotal_minor) : undefined,
+          logistics_org_id: req.body?.logistics_org_id || null,
+        });
+
+        return res.status(200).json({ success: true, estimate });
+      } catch (err: any) {
+        return res.status(500).json({
+          success: false,
+          message: err?.message || "Failed to calculate shipping estimate",
+        });
+      }
+    }
+  );
+
+  // ── Portal / Vendor / Admin OTP Password Recovery ─────────────────────────
+  router.options("/admin/users/password-reset-otp/*", cors(adminCorsOptions));
+
+  router.post(
+    "/admin/users/password-reset-otp/request",
+    cors(adminCorsOptions),
+    bodyParser.json(),
+    async (req: any, res: any) => {
+      const logger = req.scope.resolve("logger");
+      try {
+        const rawIdentifier = String(
+          req.body?.email || req.body?.identifier || req.body?.phone || ""
+        ).trim();
+        if (!rawIdentifier) {
+          return res.status(400).json({
+            success: false,
+            message: "Please enter your registered email address or phone number.",
+          });
+        }
+
+        const manager = req.scope.resolve("manager");
+        let user: any = null;
+        if (rawIdentifier.includes("@")) {
+          const rows = await manager.query(
+            `SELECT id, email, first_name, last_name, metadata FROM "user" WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL LIMIT 1`,
+            [rawIdentifier]
+          );
+          user = rows?.[0] || null;
+        } else {
+          const digits = rawIdentifier.replace(/\D/g, "");
+          const core = digits.length >= 10 ? digits.slice(-10) : digits;
+          const rows = await manager.query(
+            `SELECT id, email, first_name, last_name, metadata FROM "user"
+             WHERE deleted_at IS NULL
+               AND (
+                 REGEXP_REPLACE(COALESCE(metadata->>'phone', ''), '[^0-9]', '', 'g') LIKE $1
+                 OR LOWER(email) = LOWER($2)
+               )
+             LIMIT 1`,
+            [`%${core}`, rawIdentifier]
+          );
+          user = rows?.[0] || null;
+        }
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "No portal account found for that email or phone number.",
+          });
+        }
+
+        const OtpServiceMod = require("../services/otp-service");
+        const OtpServiceClass = OtpServiceMod.OtpService || OtpServiceMod.default;
+        let otpService: any;
+        try {
+          otpService = req.scope.resolve("otpService");
+        } catch (_) {
+          otpService = new OtpServiceClass(req.scope.cradle);
+        }
+
+        const phone = user.metadata?.phone || user.metadata?.whatsapp || "";
+        const target = phone || user.email;
+        const extraEmail = phone && user.email ? user.email : undefined;
+
+        const result = await otpService.sendOtp(
+          user.id,
+          target,
+          "admin_password_reset",
+          extraEmail
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "A 6-digit password reset code has been sent to your registered contact.",
+          masked_email: maskEmailAddress(user.email),
+          masked_phone: maskPhoneNumber(phone),
+          expires_in_seconds: result?.expiresInSeconds || 600,
+        });
+      } catch (err: any) {
+        logger?.error(`[AdminPasswordResetOtp] Request error: ${err?.message}`);
+        return res.status(500).json({
+          success: false,
+          message: err?.message || "Failed to send password reset code.",
+        });
+      }
+    }
+  );
+
+  router.post(
+    "/admin/users/password-reset-otp/confirm",
+    cors(adminCorsOptions),
+    bodyParser.json(),
+    async (req: any, res: any) => {
+      const logger = req.scope.resolve("logger");
+      try {
+        const rawIdentifier = String(
+          req.body?.email || req.body?.identifier || req.body?.phone || ""
+        ).trim();
+        const code = String(req.body?.code || req.body?.otp || "").trim();
+        const password = String(req.body?.password || "");
+
+        if (!rawIdentifier || !code || password.length < 8) {
+          return res.status(400).json({
+            success: false,
+            message: "Account email/phone, 6-digit code, and new password (min 8 chars) are required.",
+          });
+        }
+
+        const manager = req.scope.resolve("manager");
+        let user: any = null;
+        if (rawIdentifier.includes("@")) {
+          const rows = await manager.query(
+            `SELECT id, email, metadata FROM "user" WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL LIMIT 1`,
+            [rawIdentifier]
+          );
+          user = rows?.[0] || null;
+        } else {
+          const digits = rawIdentifier.replace(/\D/g, "");
+          const core = digits.length >= 10 ? digits.slice(-10) : digits;
+          const rows = await manager.query(
+            `SELECT id, email, metadata FROM "user"
+             WHERE deleted_at IS NULL
+               AND REGEXP_REPLACE(COALESCE(metadata->>'phone', ''), '[^0-9]', '', 'g') LIKE $1
+             LIMIT 1`,
+            [`%${core}`]
+          );
+          user = rows?.[0] || null;
+        }
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: "Account not found.",
+          });
+        }
+
+        const OtpServiceMod = require("../services/otp-service");
+        const OtpServiceClass = OtpServiceMod.OtpService || OtpServiceMod.default;
+        let otpService: any;
+        try {
+          otpService = req.scope.resolve("otpService");
+        } catch (_) {
+          otpService = new OtpServiceClass(req.scope.cradle);
+        }
+
+        const phone = user.metadata?.phone || user.metadata?.whatsapp || "";
+        const valid = await otpService.verifyOtp(
+          user.id,
+          "admin_password_reset",
+          code,
+          {
+            markAsUsed: true,
+            allowRecentlyUsed: false,
+            phoneOrEmail: phone || user.email,
+          }
+        );
+
+        if (!valid) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid or expired verification code.",
+          });
+        }
+
+        // 1. Update Medusa User password_hash
+        const userService = req.scope.resolve("userService");
+        await userService.update(user.id, { password });
+
+        // 2. Sync password to Supabase Auth if service role key is configured
+        try {
+          const sbUrl = process.env.SUPABASE_URL;
+          const sbServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+          if (sbUrl && sbServiceKey) {
+            const { createClient } = require("@supabase/supabase-js");
+            const sbAdmin = createClient(sbUrl, sbServiceKey);
+            const { data: listRes } = await sbAdmin.auth.admin.listUsers({ perPage: 1000 });
+            const matchedSb = (listRes?.users || []).find(
+              (u: any) => u.email?.toLowerCase() === String(user.email).toLowerCase()
+            );
+            if (matchedSb?.id) {
+              await sbAdmin.auth.admin.updateUserById(matchedSb.id, { password });
+            }
+          }
+        } catch (sbErr: any) {
+          logger?.warn(`[AdminPasswordResetOtp] Supabase password sync warning: ${sbErr?.message}`);
+        }
+
+        return res.status(200).json({
+          success: true,
+          email: user.email,
+          message: "Password reset successful. You can now sign in with your new password.",
+        });
+      } catch (err: any) {
+        logger?.error(`[AdminPasswordResetOtp] Confirm error: ${err?.message}`);
+        return res.status(500).json({
+          success: false,
+          message: err?.message || "Failed to update password.",
+        });
+      }
+    }
+  );
+
+  // Add authentication to all admin routes *except* auth, ping, onboarding, otp, email, password reset, and account invite ones
   router.use(
-    /\/admin\/((?!auth)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!otp)(?!email)(?!send-email).*)/,
-    authenticate(),
-    registerLoggedInUser
+    /\/admin\/((?!auth)(?!ping)(?!invites)(?!vendor\/onboarding)(?!users\/reset-password)(?!users\/password-token)(?!users\/password-reset-otp)(?!otp)(?!email)(?!send-email).*)/,
+    authenticateAdminOrSupabase
   );
 
   // Set up routers for store and admin endpoints
